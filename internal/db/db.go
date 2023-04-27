@@ -52,7 +52,7 @@ func CreateUserTable() string {
 // SwitchingKey BLOB
 func CreateSwitchingKeyTable() string {
 	return `
-		CREATE TABLE SwitchingKey (
+		CREATE TABLE IF NOT EXISTS SwitchingKey(
 			uuid TEXT PRIMARY KEY,
 			userIn TEXT,
 			userOut TEXT,
