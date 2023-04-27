@@ -4,15 +4,63 @@ import (
 	"crypto/ecdsa"
 	"database/sql"
 	"encoding/asn1"
+	"encoding/json"
 	"fmt"
 
 	"github.com/CamberLoid/Chimata/internal/transaction"
 	"github.com/CamberLoid/Chimata/internal/users"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/pkg/errors"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
+
+func GetTransaction(db *sql.DB, txUUID uuid.UUID) (tx *transaction.Transaction, err error) {
+	stmt, err := db.Prepare(`
+	SELECT confirmingPhase, uuid, sender, receipt,
+		ctSender, ctReceipt, sigCtSender, ctSenderSignedBy,
+		sigCTReceipt, ctReceiptSignedBy, timeStamp, isValid
+	FROM Transactions
+	WHERE uuid = ?
+`)
+	if err != nil {
+		return nil, errors.Wrap(err, "prepare statement")
+	}
+	defer stmt.Close()
+
+	// 执行查询
+	row := stmt.QueryRow(txUUID.String())
+
+	// 将查询结果映射到结构体
+	var txJSON string
+	tx = &transaction.Transaction{}
+	err = row.Scan(
+		&tx.ConfirmingPhase,
+		&tx.UUID,
+		&tx.Sender,
+		&tx.Receipt,
+		&tx.CTSender,
+		&tx.CTReceipt,
+		&tx.SigCTSender,
+		&tx.CTSenderSignedBy,
+		&tx.SigCTReceipt,
+		&tx.CTReceiptSignedBy,
+		&tx.TimeStamp,
+		&tx.IsValid,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "scan row")
+	}
+
+	// 反序列化 JSON 字符串到 tx 对象
+	err = json.Unmarshal([]byte(txJSON), tx)
+	if err != nil {
+		return nil, errors.Wrap(err, "unmarshal json")
+	}
+
+	return tx, nil
+}
 
 // 查询用户余额
 func GetUserBalance(db *sql.DB, UserUUID uuid.UUID) (balance *rlwe.Ciphertext, err error) {
