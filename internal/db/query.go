@@ -166,6 +166,29 @@ func GetSwitchingKeyPKInPKOut(db *sql.DB, pkIDIn, pkIDOut uuid.UUID) (swk *rlwe.
 	return
 }
 
+func GetSwitchingKeyUserIDInOut(db *sql.DB, UserIDIn, UserIDOut uuid.UUID) (swk *rlwe.SwitchingKey, err error) {
+	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
+	swk = rlwe.NewSwitchingKey(params.Parameters, params.RingQ().NewPoly().Level(), params.RingP().NewPoly().Level())
+
+	row, err := db.Query(`
+		SELECT switchingKey FROM SwitchingKeys
+		WHERE pkIDIn = ? AND pkIDOut = ?;
+	`, UserIDIn, UserIDOut)
+
+	if err != nil {
+		return nil, err
+	}
+	defer row.Close()
+
+	var swkByte []byte
+	if row.Scan(&swkByte) != nil {
+		return nil, fmt.Errorf("failed to scan switching key: %v", err)
+	}
+	err = swk.UnmarshalBinary(swkByte)
+
+	return
+}
+
 // --- 写入部分 ---
 
 // TODO: 检查是否uuid重复
