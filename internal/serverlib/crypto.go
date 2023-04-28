@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/CamberLoid/Chimata/internal/transaction"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
@@ -90,13 +91,34 @@ func ValidateSignatureBase(msg []byte, sig []byte, pk *ecdsa.PublicKey) (isValid
 
 // --- 密文更新部分 ---
 
+func GetUpdatedBalance(tx *transaction.Transaction, balanceSender, balanceReceipt *rlwe.Ciphertext) (updatedSender *rlwe.Ciphertext, updatedReceipt *rlwe.Ciphertext, err error) {
+	updatedSender, err = GetUpdatedSenderBalance(tx, balanceSender)
+	if err != nil {
+		return nil, nil, err
+	}
+	updatedReceipt, err = GetUpdatedReceiptBalance(tx, balanceReceipt)
+	if err != nil {
+		return nil, nil, err
+	}
+	return
+}
+
 // GetUpdatedSenderBalance 计算新的发送方余额，也就是包装过的密文减法
 // 输入原余额和变动金额，输出新的余额
-func GetUpdatedSenderBalance(balance, txAmount *rlwe.Ciphertext) (updated *rlwe.Ciphertext, err error) {
+func GetUpdatedSenderBalance(tx *transaction.Transaction, balance *rlwe.Ciphertext) (updated *rlwe.Ciphertext, err error) {
+	ct := NewCiphertext()
+	err = ct.UnmarshalBinary(tx.CTSender)
+	if err != nil {
+		return nil, err
+	}
+	return getUpdatedSenderBalance(balance, ct)
+}
+
+func getUpdatedSenderBalance(balance, txAmount *rlwe.Ciphertext) (updated *rlwe.Ciphertext, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			updated = nil
-			err = fmt.Errorf("adding failed %v", p)
+			err = fmt.Errorf("calculating ciphertext failed %v", p)
 		}
 	}()
 
@@ -107,7 +129,16 @@ func GetUpdatedSenderBalance(balance, txAmount *rlwe.Ciphertext) (updated *rlwe.
 
 // GetUpdatedReceiptBalance 计算新的接收方余额，也就是包装过的密文加法
 // 输入原余额和变动金额，输出新的余额
-func GetUpdatedReceiptBalance(balance, txAmount *rlwe.Ciphertext) (updated *rlwe.Ciphertext, err error) {
+func GetUpdatedReceiptBalance(tx *transaction.Transaction, balance *rlwe.Ciphertext) (updated *rlwe.Ciphertext, err error) {
+	ct := NewCiphertext()
+	err = ct.UnmarshalBinary(tx.CTReceipt)
+	if err != nil {
+		return nil, err
+	}
+	return getUpdatedSenderBalance(balance, ct)
+}
+
+func getUpdatedReceiptBalance(balance, txAmount *rlwe.Ciphertext) (updated *rlwe.Ciphertext, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			updated = nil
@@ -119,6 +150,8 @@ func GetUpdatedReceiptBalance(balance, txAmount *rlwe.Ciphertext) (updated *rlwe
 	updated = evaluator.AddNew(balance, txAmount)
 	return
 }
+
+// --- Helper Func 部分 ---
 
 // NewCiphertext 创建新的密文
 func NewCiphertext() *rlwe.Ciphertext {

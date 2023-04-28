@@ -64,18 +64,21 @@ func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request
 	if !valid {
 		returnFailure(w, req,
 			fmt.Errorf("verification failed"+err.Error()), http.StatusUnauthorized)
+		return
 	}
 
 	// 处理
 	err = serverlib.InitializeNewSenderPKTransaction(tx)
 	if err != nil {
 		returnFailure(w, req, err, http.StatusBadRequest)
+		return
 	}
 
 	// 重加密
 	swk, err := db.GetSwitchingKeyUserIDInOut(Database, tx.Sender, tx.Receipt)
 	if err != nil {
 		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
 	}
 
 	serverlib.KeySwitchSenderToReceipt(tx, swk)
@@ -83,6 +86,32 @@ func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request
 	// 写入
 	if err = db.WriteTransaction(Database, tx); err != nil {
 		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
+
+	// 更新余额
+	senderBalance, err := db.GetUserBalance(Database, tx.Sender)
+	if err != nil {
+		returnFailure(w, req, err, 500)
+		return
+	}
+	receiptBalance, err := db.GetUserBalance(Database, tx.Receipt)
+	if err != nil {
+		returnFailure(w, req, err, 500)
+	}
+	senderUpdated, receiptUpdated, err := serverlib.GetUpdatedBalance(tx, senderBalance, receiptBalance)
+
+	if err != nil {
+		returnFailure(w, req, err, 500)
+	}
+
+	err = db.UpdateBalance(Database, tx.Sender, senderUpdated)
+	if err != nil {
+		returnFailure(w, req, err, 500)
+	}
+	err = db.UpdateBalance(Database, tx.Receipt, receiptUpdated)
+	if err != nil {
+		returnFailure(w, req, err, 500)
 	}
 
 	// 处理返回信息
@@ -181,6 +210,7 @@ func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 			fmt.Errorf("get transaction failed: "+err.Error()), 500)
 	}
 
+	// 验证交易
 	sig := []byte(jsonData["sigCtSender"].(string))
 	tx.SigCTSender = sig
 	tx.CTSenderSignedBy = tx.Receipt
@@ -194,13 +224,39 @@ func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 		returnFailure(w, req,
 			fmt.Errorf("verification failed"+err.Error()), http.StatusUnauthorized)
 	}
-	//todo(w, req)
 
+	// 更新交易信息
 	err = serverlib.FinishTransaction(tx)
 	if err != nil {
 		returnFailure(w, req, err, http.StatusInternalServerError)
 	}
 
+	// 更新余额
+	senderBalance, err := db.GetUserBalance(Database, tx.Sender)
+	if err != nil {
+		returnFailure(w, req, err, 500)
+		return
+	}
+	receiptBalance, err := db.GetUserBalance(Database, tx.Receipt)
+	if err != nil {
+		returnFailure(w, req, err, 500)
+	}
+	senderUpdated, receiptUpdated, err := serverlib.GetUpdatedBalance(tx, senderBalance, receiptBalance)
+
+	if err != nil {
+		returnFailure(w, req, err, 500)
+	}
+
+	err = db.UpdateBalance(Database, tx.Sender, senderUpdated)
+	if err != nil {
+		returnFailure(w, req, err, 500)
+	}
+	err = db.UpdateBalance(Database, tx.Receipt, receiptUpdated)
+	if err != nil {
+		returnFailure(w, req, err, 500)
+	}
+
+	// 写入交易
 	if err = db.WriteTransaction(Database, tx); err != nil {
 		returnFailure(w, req, err, http.StatusInternalServerError)
 	}

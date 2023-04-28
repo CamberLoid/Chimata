@@ -5,7 +5,6 @@ import (
 	"os"
 
 	database "github.com/CamberLoid/Chimata/internal/db"
-
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -62,13 +61,13 @@ func initDatabase(path string) (db *sql.DB, err error) {
 
 	// 建立公钥表
 	DebugLogger.Println("Database: Initializing CKKS PublicKey")
-	_, err = db.Exec(database.CreateCKKSPublicKeyTable())
+	_, err = db.Exec(database.CreateCKKSKeyTable())
 	if err != nil {
 		return nil, err
 	}
 
 	DebugLogger.Println("Database: Initializing ECDSA PublicKey")
-	_, err = db.Exec(database.CreateECDSAPublicKeyTable())
+	_, err = db.Exec(database.CreateECDSAKeyTable())
 	if err != nil {
 		return nil, err
 	}

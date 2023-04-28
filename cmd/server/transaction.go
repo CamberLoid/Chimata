@@ -52,13 +52,13 @@ func verifyTransactionConfirmingStage(tx *transaction.Transaction) (res bool, er
 	SignerUUID := tx.CTSenderSignedBy
 
 	// 获取公钥
-	pubkey, err := db.GetECDSAPubkeyByUserUUID(Database, SignerUUID)
+	pubkey, err := db.GetECDSAKeyByUserUUID(Database, SignerUUID)
 	if err != nil {
 		return false, err
 	}
 
 	// 验证签名
-	res, err = serverlib.ValidateSignatureForAcceptCipherText(tx.CTSender, tx.SigCTSender, pubkey)
+	res, err = serverlib.ValidateSignatureForAcceptCipherText(tx.CTSender, tx.SigCTSender, pubkey.ECDSAPublicKey)
 	if err != nil {
 		return false, err
 	}
@@ -72,12 +72,12 @@ func verifyTransactionConfirmingStage(tx *transaction.Transaction) (res bool, er
 func verifyTransactionSenderPK(tx *transaction.Transaction) (res bool, err error) {
 	SignerUUID := tx.CTSenderSignedBy
 
-	pubkey, err := db.GetECDSAPubkeyByUserUUID(Database, SignerUUID)
+	pubkey, err := db.GetECDSAKeyByUserUUID(Database, SignerUUID)
 	if err != nil {
 		return false, err
 	}
 
-	res, err = serverlib.ValidateSignatureForCipherText(tx.CTSender, tx.SigCTSender, pubkey)
+	res, err = serverlib.ValidateSignatureForCipherText(tx.CTSender, tx.SigCTSender, pubkey.ECDSAPublicKey)
 
 	if err != nil {
 		return false, err
@@ -92,12 +92,12 @@ func verifyTransactionSenderPK(tx *transaction.Transaction) (res bool, err error
 func verifyTransactionReceiptPK(tx *transaction.Transaction) (res bool, err error) {
 	SignerUUID := tx.CTReceiptSignedBy
 
-	pubkey, err := db.GetECDSAPubkeyByUserUUID(Database, SignerUUID)
+	pubkey, err := db.GetECDSAKeyByUserUUID(Database, SignerUUID)
 	if err != nil {
 		return false, err
 	}
 
-	res, err = serverlib.ValidateSignatureForCipherText(tx.CTSender, tx.SigCTSender, pubkey)
+	res, err = serverlib.ValidateSignatureForCipherText(tx.CTSender, tx.SigCTSender, pubkey.ECDSAPublicKey)
 
 	if err != nil {
 		return false, err
