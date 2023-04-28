@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/CamberLoid/Chimata/internal/misc"
 	"github.com/CamberLoid/Chimata/internal/transaction"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
@@ -106,7 +107,7 @@ func GetUpdatedBalance(tx *transaction.Transaction, balanceSender, balanceReceip
 // GetUpdatedSenderBalance 计算新的发送方余额，也就是包装过的密文减法
 // 输入原余额和变动金额，输出新的余额
 func GetUpdatedSenderBalance(tx *transaction.Transaction, balance *rlwe.Ciphertext) (updated *rlwe.Ciphertext, err error) {
-	ct := NewCiphertext()
+	ct := misc.NewCiphertext()
 	err = ct.UnmarshalBinary(tx.CTSender)
 	if err != nil {
 		return nil, err
@@ -130,7 +131,7 @@ func getUpdatedSenderBalance(balance, txAmount *rlwe.Ciphertext) (updated *rlwe.
 // GetUpdatedReceiptBalance 计算新的接收方余额，也就是包装过的密文加法
 // 输入原余额和变动金额，输出新的余额
 func GetUpdatedReceiptBalance(tx *transaction.Transaction, balance *rlwe.Ciphertext) (updated *rlwe.Ciphertext, err error) {
-	ct := NewCiphertext()
+	ct := misc.NewCiphertext()
 	err = ct.UnmarshalBinary(tx.CTReceipt)
 	if err != nil {
 		return nil, err
@@ -152,13 +153,6 @@ func getUpdatedReceiptBalance(balance, txAmount *rlwe.Ciphertext) (updated *rlwe
 }
 
 // --- Helper Func 部分 ---
-
-// NewCiphertext 创建新的密文
-func NewCiphertext() *rlwe.Ciphertext {
-	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
-	ct := ckks.NewCiphertext(params, 1, params.MaxLevel())
-	return ct
-}
 
 func NewEmptyEvaluator() ckks.Evaluator {
 	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
