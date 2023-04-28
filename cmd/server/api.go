@@ -242,7 +242,6 @@ func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 		returnFailure(w, req, err, 500)
 	}
 	senderUpdated, receiptUpdated, err := serverlib.GetUpdatedBalance(tx, senderBalance, receiptBalance)
-
 	if err != nil {
 		returnFailure(w, req, err, 500)
 	}
