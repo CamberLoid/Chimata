@@ -10,14 +10,16 @@ import (
 	"net/url"
 
 	"github.com/CamberLoid/Chimata/internal/transaction"
+	"github.com/google/uuid"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
 const (
-	DefaultServerURL          string = "http://localhost:16001"
-	TransactionCreateEndpoint string = "/transaction/create"
-	TransactionAcceptEndpoint string = "/transaction/accept"
-	GetBalanceEndpoint        string = "/user/getBalance"
+	DefaultServerURL           string = "http://localhost:16001"
+	TransactionCreateEndpoint  string = "/transaction/create"
+	TransactionConfirmEndpoint string = "/transaction/confirm"
+	TransactionGetEndpoint     string = "/transaction/get"
+	GetBalanceEndpoint         string = "/user/getBalance"
 )
 
 var (
@@ -61,6 +63,14 @@ func (u *User) createTransferJob(t *transaction.Transaction, server string) (new
 		return nil, err
 	}
 
+	if len(t.CTSender) != 0 {
+		server = server + "/bySenderPK"
+	} else if len(t.CTReceipt) != 0 {
+		server = server + "/byReceiptPK"
+	} else {
+		return nil, errors.New("invalid transaction")
+	}
+
 	// 将 JSON 格式的交易信息发送到服务端
 	resp, err := http.Post(server, "application/json", bytes.NewBuffer(payload))
 	defer resp.Body.Close()
@@ -84,7 +94,7 @@ func (u *User) CreateReceiveJob(target User) error {
 // 一个可能返回的json：
 // "status": "OK", "Failed"
 // "balance" : rlwe.ciphertext
-func ServerGetBalance(server string, target [16]byte) (balance *rlwe.Ciphertext, err error) {
+func ServerGetBalance(server string, target uuid.UUID) (balance *rlwe.Ciphertext, err error) {
 	var (
 		jsonData map[string]interface{}
 	)
@@ -121,15 +131,15 @@ func ServerGetBalance(server string, target [16]byte) (balance *rlwe.Ciphertext,
 
 // --- 接受转账 （Accept Transaction）部分 ---
 
-// CreateAcceptTransactionTask 用来将确认交易信息上传到服务端
+// CreateConfirmTransactionTask 用来将确认交易信息上传到服务端
 // 输入：Transaction 结构体
 // 不会有返回值
-func (u User) CreateAcceptTransactionTask(t *transaction.Transaction) error {
+func (u User) CreateConfirmTransactionTask(t *transaction.Transaction) error {
 	payload, err := json.Marshal(t)
 	if err != nil {
 		return err
 	}
-	server, err := url.JoinPath(ConfigServerURL, TransactionAcceptEndpoint)
+	server, err := url.JoinPath(ConfigServerURL, TransactionConfirmEndpoint)
 	if err != nil {
 		return err
 	}
@@ -148,26 +158,56 @@ func (u User) CreateAcceptTransactionTask(t *transaction.Transaction) error {
 	return nil
 }
 
-// --- Helper Func 部分 ---
+// --- 获取交易信息部分 ---
 
-func ExtractTransactionFromResponseJSON(jsonByte []byte) (tx *transaction.Transaction, err error) {
-	var jsonData map[string]interface{}
-	err = json.Unmarshal(jsonByte, &jsonData)
+func GetTransactionFromServer(id uuid.UUID) (tx *transaction.Transaction, err error) {
+	// TODO: 检查url是否合法
+	return getTransactionFromServer(ConfigServerURL, id)
+}
+
+func getTransactionFromServer(server string, id uuid.UUID) (tx *transaction.Transaction, err error) {
+	var (
+		jsonData map[string]interface{}
+	)
+
+	server, err = url.JoinPath(server, TransactionGetEndpoint)
 	if err != nil {
 		return nil, err
 	}
 
+	payload, err := json.Marshal(*tx)
+
+	resp, err := http.NewRequest("GET", server, bytes.NewBuffer(payload))
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&jsonData)
+
+	if err = CheckIfOK(jsonData); err != nil {
+		return nil, err
+	}
+
+	tx, err = ExtractTransactionFromResponseJSON(jsonData)
+
+	return
+}
+
+// --- Helper Func 部分 ---
+
+func ExtractTransactionFromResponseJSON(jsonData map[string]interface{}) (tx *transaction.Transaction, err error) {
 	if jsonData["status"].(string) != "OK" {
 		return nil, errors.New(jsonData["err"].(string))
 	}
 
-	var newT transaction.Transaction
-	err = json.Unmarshal([]byte(jsonData["transaction"].(string)), &newT)
+	var newT *transaction.Transaction
+	err = json.Unmarshal([]byte(jsonData["transaction"].(string)), newT)
 	if err != nil {
 		return nil, err
 	}
 
-	return &newT, nil
+	return newT, nil
 }
 
 // 判断服务端返回的json是否是成功的
