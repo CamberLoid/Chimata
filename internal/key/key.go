@@ -8,6 +8,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 
+	"github.com/google/uuid"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
@@ -18,11 +19,13 @@ var (
 )
 
 type CKKSKeyChain struct {
+	Identifier     uuid.UUID
 	CKKSPrivateKey *rlwe.SecretKey
 	CKKSPublicKey  *rlwe.PublicKey
 }
 
 type ECDSAKeyChain struct {
+	Identifier      uuid.UUID
 	ECDSAPrivateKey *ecdsa.PrivateKey
 	ECDSAPublicKey  *ecdsa.PublicKey
 }

@@ -34,12 +34,15 @@ func CreateTransactionTable() string {
 // uuid TEXT PRIMARY KEY,
 // userName TEXT
 // balance BLOB <- []byte 被 rlwe.CipherText.Marshall编码
+// primary{ECDSA, CKKS}Key <- uuid, TEXT
 func CreateUserTable() string {
 	return `
 		CREATE TABLE IF NOT EXISTS Users (
 			uuid TEXT PRIMARY KEY,
 			userName TEXT,
-			balance BLOB
+			balance BLOB,
+			primaryCKKSKey TEXT,
+			primaryECDSAKey TEXT
 		);
 	`
 }

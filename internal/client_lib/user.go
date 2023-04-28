@@ -7,7 +7,6 @@ import (
 	"errors"
 
 	"github.com/CamberLoid/Chimata/internal/users"
-	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
@@ -18,10 +17,6 @@ type User struct {
 
 	// 服务端认证，现阶段不考虑
 	oAuth string
-
-	// 绑定的数据库
-	db *leveldb.DB
-	// 其他应该写什么呢
 }
 
 // ImportCKKSKeychainFromFile 从文件中导入 CKKS 密钥链

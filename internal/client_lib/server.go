@@ -35,26 +35,6 @@ type GetBalanceJSON struct {
 
 // --- 创建交易部分 ---
 
-func UnmarshalTransactionFromResponse(resp *http.Response) (*transaction.Transaction, error) {
-	var respJSON map[string]interface{}
-	err := json.NewDecoder(resp.Body).Decode(&respJSON)
-	if err != nil {
-		return nil, err
-	}
-
-	if respJSON["status"].(string) != "OK" {
-		return nil, errors.New(respJSON["message"].(string))
-	}
-
-	var newT transaction.Transaction
-	err = json.Unmarshal([]byte(respJSON["transaction"].(string)), &newT)
-	if err != nil {
-		return nil, err
-	}
-
-	return &newT, nil
-}
-
 // 调用 createTransferJob 进行进一步动作。
 // createTransferJob 基于 HTTP POST 进行转账请求的发起，将编码后的转账请求发送到服务端；
 // 服务端将转账请求存入数据库，并返回转账任务的 UUID/流水号
@@ -95,6 +75,7 @@ func (u *User) createTransferJob(t *transaction.Transaction, server string) (new
 }
 
 // CreateReceiveTask 创建一个接受任务，提交至云端，并将接受任务的 UUID/流水号返回
+// 目前不考虑
 func (u *User) CreateReceiveJob(target User) error {
 	return errors.New("not implemented yet!")
 }
@@ -117,7 +98,15 @@ func ServerGetBalance(server string, target [16]byte) (balance *rlwe.Ciphertext,
 
 	resp, err := http.NewRequest("GET", server, bytes.NewBuffer(payload))
 
+	if err != nil {
+		return nil, err
+	}
+
 	err = json.NewDecoder(resp.Body).Decode(&jsonData)
+
+	if err = CheckIfOK(jsonData); err != nil {
+		return nil, err
+	}
 
 	balanceString := jsonData["balance"].(string)
 	if balanceString == "" {
@@ -128,13 +117,6 @@ func ServerGetBalance(server string, target [16]byte) (balance *rlwe.Ciphertext,
 	err = balance.UnmarshalBinary([]byte(balanceString))
 
 	return
-}
-
-// --- 创建接收转账请求部分 ---
-
-func (u *User) CreateReceiveTask(target User) error {
-
-	return errors.New("not implemented yet!")
 }
 
 // --- 接受转账 （Accept Transaction）部分 ---
@@ -161,7 +143,60 @@ func (u User) CreateAcceptTransactionTask(t *transaction.Transaction) error {
 	err = json.NewDecoder(resp.Body).Decode(&jsonData)
 
 	if jsonData["status"].(string) != "OK" {
-		return errors.New("status is not ok " + jsonData["msg"].(string))
+		return errors.New("status is not ok " + jsonData["err"].(string))
 	}
 	return nil
+}
+
+// --- Helper Func 部分 ---
+
+func ExtractTransactionFromResponseJSON(jsonByte []byte) (tx *transaction.Transaction, err error) {
+	var jsonData map[string]interface{}
+	err = json.Unmarshal(jsonByte, &jsonData)
+	if err != nil {
+		return nil, err
+	}
+
+	if jsonData["status"].(string) != "OK" {
+		return nil, errors.New(jsonData["err"].(string))
+	}
+
+	var newT transaction.Transaction
+	err = json.Unmarshal([]byte(jsonData["transaction"].(string)), &newT)
+	if err != nil {
+		return nil, err
+	}
+
+	return &newT, nil
+}
+
+// 判断服务端返回的json是否是成功的
+func CheckIfOK(jsonData map[string]interface{}) (err error) {
+	switch s := jsonData["status"].(string); s {
+	case "OK":
+		return nil
+	case "failed", "Failed", "FAILED":
+		return errors.New(jsonData["err"].(string))
+	default:
+		return nil
+	}
+}
+
+func UnmarshalTransactionFromResponse(resp *http.Response) (*transaction.Transaction, error) {
+	var respJSON map[string]interface{}
+	err := json.NewDecoder(resp.Body).Decode(&respJSON)
+	if err != nil {
+		return nil, err
+	}
+
+	if respJSON["status"].(string) != "OK" {
+		return nil, errors.New(respJSON["err"].(string))
+	}
+
+	var newT transaction.Transaction
+	err = json.Unmarshal([]byte(respJSON["transaction"].(string)), &newT)
+	if err != nil {
+		return nil, err
+	}
+	return &newT, nil
 }

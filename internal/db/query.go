@@ -2,8 +2,8 @@ package db
 
 import (
 	"crypto/ecdsa"
+	"crypto/x509"
 	"database/sql"
-	"encoding/asn1"
 	"encoding/json"
 	"fmt"
 
@@ -108,9 +108,16 @@ func GetECDSAPubkeyByUserUUID(db *sql.DB, UserUUID uuid.UUID) (pubkey *ecdsa.Pub
 		return pubkey, fmt.Errorf("failed to scan ECDSA public key bytes: %v", err)
 	}
 
-	_, err = asn1.Unmarshal(pubkeyBytes, pubkey)
-
-	return
+	_pubkey, err := x509.ParsePKIXPublicKey(pubkeyBytes)
+	if err != nil {
+		return nil, err
+	}
+	switch v := _pubkey.(type) {
+	case *ecdsa.PublicKey:
+		return _pubkey.(*ecdsa.PublicKey), nil
+	default:
+		return nil, fmt.Errorf("not a ecdsa public key, got %v", v)
+	}
 }
 
 func GetCKKSPubkeyByUserUUID(db *sql.DB, UserUUID uuid.UUID) (pubkey *rlwe.PublicKey, err error) {
@@ -307,7 +314,7 @@ func PutCKKSPublicKeyColumn(db *sql.DB, keyID, userID uuid.UUID, pk *rlwe.Public
 
 // PutECDSAPublicKeyColumn 创建新的ECDSA公钥行
 func PutECDSAPublicKeyColumn(db *sql.DB, keyID, userID uuid.UUID, pk *ecdsa.PublicKey) (err error) {
-	pkBytes, err := asn1.Marshal(pk)
+	pkBytes, err := x509.MarshalPKIXPublicKey(pk)
 	if err != nil {
 		return err
 	}
