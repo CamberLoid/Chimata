@@ -1,4 +1,4 @@
-package client_lib
+package clientlib
 
 import (
 	"reflect"

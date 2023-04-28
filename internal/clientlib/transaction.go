@@ -1,6 +1,6 @@
 // Transaction.go 用于定义转账相关的接口和函数
 
-package client_lib
+package clientlib
 
 import (
 	"errors"

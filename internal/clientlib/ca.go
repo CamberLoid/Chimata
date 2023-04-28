@@ -1,6 +1,7 @@
-package client_lib
+package clientlib
 
 // ca.go 包含客户端和 CA 交互用的接口函数等
+// 不考虑这部分，现阶段 CA 对用户端离线
 
 // Todos:
 // - [ ] 请求最新的 CA 认证公钥
@@ -11,12 +12,12 @@ package client_lib
 
 import (
 	"crypto/ecdsa"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
 
-	"github.com/CamberLoid/Chimata/internal/key"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
@@ -55,7 +56,6 @@ func SyncCASigningKeyWithURL(caUrl string) ([]ecdsa.PublicKey, error) {
 }
 
 // 通过网络，请求 CA 签名公钥。
-// 本方法假定只会返回单个公钥
 // 返回 Like：
 /*
 {
@@ -83,8 +83,8 @@ func syncCASignPublicKey(url string) (pk []ecdsa.PublicKey, err error) {
 	if err != nil {
 		return nil, err
 	}
-	if jsonData["status"] != "OK" {
-		return nil, errors.New("status is not OK!")
+	if jsonData["status"].(string) != "OK" {
+		return nil, errors.New("status is not OK!" + jsonData["err"].(string))
 	}
 
 	pubkeys := jsonData["pubkey"].([]interface{})
@@ -95,12 +95,12 @@ func syncCASignPublicKey(url string) (pk []ecdsa.PublicKey, err error) {
 	}
 
 	for _, s := range pubkeys {
-		_s := s.(map[string]interface{})
-		_pk, err := key.MarshalECDSAPubkeyMap(&_s)
+		_s := s.(string)
+		_pk, err := x509.ParsePKIXPublicKey([]byte(_s))
 		if err != nil {
 			return nil, err
 		}
-		pk = append(pk, *_pk)
+		pk = append(pk, *_pk.(*ecdsa.PublicKey))
 	}
 
 	return

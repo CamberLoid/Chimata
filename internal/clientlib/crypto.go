@@ -1,6 +1,6 @@
 // crypto.go: 密码学相关的函数和结构体
 
-package client_lib
+package clientlib
 
 /*  CKKS编解码器初始化
  */

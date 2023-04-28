@@ -1,6 +1,6 @@
 // server.go 包括客户端与服务端交互的接口和函数
 
-package client_lib
+package clientlib
 
 import (
 	"bytes"
