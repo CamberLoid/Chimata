@@ -41,8 +41,8 @@ func CreateUserTable() string {
 			uuid TEXT PRIMARY KEY,
 			userName TEXT,
 			balance BLOB,
-			primaryCKKSKey TEXT,
-			primaryECDSAKey TEXT
+			primaryCKKSKeyID TEXT,
+			primaryECDSAKeyID TEXT
 		);
 	`
 }
@@ -61,7 +61,7 @@ func CreateSwitchingKeyTable() string {
 			userOut TEXT,
 			pkIn TEXT,
 			pkOut TEXT,
-			SwitchingKey BLOB,
+			SwitchingKey BLOB NOT NULL,
 			FOREIGN KEY (userIn) REFERENCES Users(uuid),
 			FOREIGN KEY (userOut) REFERENCES Users(uuid),
 			FOREIGN KEY (pkIn) REFERENCES CKKSPublicKeys(uuid),
@@ -77,14 +77,15 @@ func CreateSwitchingKeyTable() string {
 // evaluationKey blob, which may be null
 // isMain integer, which would be boolean in golang, and for each user they can only have one column tagged isMain = true
 
-// CreateCKKSPublicKeyTable 新的 CKKS 公钥表
-func CreateCKKSPublicKeyTable() string {
+// CreateCKKSKeyTable 新的 CKKS 公钥表
+func CreateCKKSKeyTable() string {
 	return `
 		CREATE TABLE IF NOT EXISTS CKKSPublicKeys (
 			uuid TEXT PRIMARY KEY,
 			user TEXT NOT NULL REFERENCES Users(uuid),
 			publicKey BLOB NOT NULL,
-			evaluationKey BLOB
+			evaluationKey BLOB,
+			privateKey BLOB
 		);
 	`
 }
@@ -95,34 +96,13 @@ func CreateCKKSPublicKeyTable() string {
 // publicKey BLOB
 
 // createECDSAPublicKeyTable 创建新的ECDSA公钥表
-func CreateECDSAPublicKeyTable() string {
+func CreateECDSAKeyTable() string {
 	return `
 		CREATE TABLE IF NOT EXISTS ECDSAPublicKeys (
 			uuid TEXT PRIMARY KEY,
 			user TEXT NOT NULL REFERENCES Users(uuid),
-			publicKey BLOB NOT NULL
-		);
-	`
-}
-
-// Only used in Client
-func CreateECDSAPrivateKeyTable() string {
-	return `
-		CREATE TABLE IF NOT EXISTS ECDSAPrivateKeys (
-			uuid TEXT PRIMARY KEY,
-			user TEXT NOT NULL REFERENCES Users(uuid),
-			privateKey BLOB NOT NULL
-		);
-	`
-}
-
-// Only used in Clinet/CA
-func CreateCKKSPrivateKeyTable() string {
-	return `
-		CREATE TABLE IF NOT EXISTS CKKSPrivateKeys (
-			uuid TEXT PRIMARY KEY,
-			user TEXT NOT NULL REFERENCES Users(uuid),
-			privateKey BLOB NOT NULL
+			publicKey BLOB NOT NULL,
+			privateKey BLOB
 		);
 	`
 }

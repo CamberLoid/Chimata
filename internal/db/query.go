@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/CamberLoid/Chimata/internal/key"
 	"github.com/CamberLoid/Chimata/internal/transaction"
 	"github.com/CamberLoid/Chimata/internal/users"
 	"github.com/google/uuid"
@@ -90,9 +91,10 @@ func GetUserBalance(db *sql.DB, UserUUID uuid.UUID) (balance *rlwe.Ciphertext, e
 	return
 }
 
-func GetECDSAPubkeyByUserUUID(db *sql.DB, UserUUID uuid.UUID) (pubkey *ecdsa.PublicKey, err error) {
+func GetECDSAKeyByUserUUID(db *sql.DB, UserUUID uuid.UUID) (keyChain *key.ECDSAKeyChain, err error) {
+	keyChain = new(key.ECDSAKeyChain)
 	row, err := db.Query(`
-		SELECT publicKey
+		SELECT uuid, publicKey, privateKey
 		FROM ECDSAPublicKeys
 		WHERE user = ?;
 		`, UserUUID,
@@ -102,52 +104,77 @@ func GetECDSAPubkeyByUserUUID(db *sql.DB, UserUUID uuid.UUID) (pubkey *ecdsa.Pub
 	}
 	defer row.Close()
 
-	var pubkeyBytes []byte
+	var pubkeyBytes, privateKeyBytes []byte
+	var identifier uuid.UUID
 
-	if row.Scan(&pubkeyBytes) != nil {
-		return pubkey, fmt.Errorf("failed to scan ECDSA public key bytes: %v", err)
+	if row.Scan(&identifier, &pubkeyBytes, &privateKeyBytes) != nil {
+		return nil, fmt.Errorf("failed to scan ECDSA key bytes: %v", err)
 	}
 
+	keyChain.Identifier = identifier
+
+	// 处理公钥
 	_pubkey, err := x509.ParsePKIXPublicKey(pubkeyBytes)
 	if err != nil {
 		return nil, err
 	}
 	switch v := _pubkey.(type) {
 	case *ecdsa.PublicKey:
-		return _pubkey.(*ecdsa.PublicKey), nil
+		keyChain.ECDSAPublicKey = _pubkey.(*ecdsa.PublicKey)
 	default:
 		return nil, fmt.Errorf("not a ecdsa public key, got %v", v)
 	}
+
+	// 处理可能的私钥
+	if len(privateKeyBytes) != 0 {
+		_privkey, err := x509.ParseECPrivateKey(privateKeyBytes)
+		if err == nil {
+			keyChain.ECDSAPrivateKey = _privkey
+		}
+		return keyChain, nil
+	} else {
+		return
+	}
 }
 
-func GetCKKSPubkeyByUserUUID(db *sql.DB, UserUUID uuid.UUID) (pubkey *rlwe.PublicKey, err error) {
+func GetCKKSKeyByUserUUID(db *sql.DB, UserUUID uuid.UUID) (keyChain *key.CKKSKeyChain, err error) {
 	// 初始化
+	keyChain = new(key.CKKSKeyChain)
 	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
-	pubkey = rlwe.NewPublicKey(params.Parameters)
+	privkey := rlwe.NewSecretKey(params.Parameters)
+	var pubkeyBytes, privateKeyBytes []byte
+	var id []byte
 
 	// 查询
 	row, err := db.Query(`
-		SELECT publicKey
+		SELECT uuid, publicKey, privateKey
 		FROM CKKSPublicKeys
 		WHERE user = ?;
 		`, UserUUID,
 	)
-
 	if err != nil {
 		return nil, err
 	}
-
 	defer row.Close()
 
-	var pubkeyBytes []byte
+	if row.Scan(&id, &pubkeyBytes, &privateKeyBytes) != nil {
+		return nil, fmt.Errorf("failed to scan CKKS public key bytes: %v", err)
+	}
+	keyChain.Identifier = uuid.MustParse(string(id))
 
-	if row.Scan(&pubkeyBytes) != nil {
-		return pubkey, fmt.Errorf("failed to scan CKKS public key bytes: %v", err)
+	if err = keyChain.CKKSPublicKey.UnmarshalBinary(pubkeyBytes); err != nil {
+		return nil, err
 	}
 
-	err = pubkey.UnmarshalBinary(pubkeyBytes)
-
-	return
+	if len(privateKeyBytes) != 0 {
+		err = privkey.UnmarshalBinary(privateKeyBytes)
+		if err == nil {
+			keyChain.CKKSPrivateKey = privkey
+		} else {
+			return keyChain, err
+		}
+	}
+	return keyChain, nil
 }
 
 func GetSwitchingKeyPKInPKOut(db *sql.DB, pkIDIn, pkIDOut uuid.UUID) (swk *rlwe.SwitchingKey, err error) {
@@ -194,6 +221,46 @@ func GetSwitchingKeyUserIDInOut(db *sql.DB, UserIDIn, UserIDOut uuid.UUID) (swk 
 	err = swk.UnmarshalBinary(swkByte)
 
 	return
+}
+
+func GetUser(db *sql.DB, UserUUID uuid.UUID) (user *users.User, err error) {
+	var (
+		ckksKeychain  *key.CKKSKeyChain
+		ecdsaKeychain *key.ECDSAKeyChain
+		id            string
+	)
+	user = new(users.User)
+
+	row, err := db.Query(`
+		SELECT uuid, userName
+		FROM Users
+		WHERE uuid = ?;
+		`, UserUUID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer row.Close()
+
+	if row.Scan(&id, &user.UserName) != nil {
+		return nil, fmt.Errorf("failed to scan user: %v", err)
+	}
+	user.UserIdentifier = uuid.MustParse(id)
+
+	ckksKeychain, err = GetCKKSKeyByUserUUID(db, user.UserIdentifier)
+	if err != nil && ckksKeychain == nil {
+		return nil, err
+	}
+
+	ecdsaKeychain, err = GetECDSAKeyByUserUUID(db, user.UserIdentifier)
+	if err != nil && ecdsaKeychain == nil {
+		return nil, err
+	}
+
+	user.UserCKKSKeyChain = append(user.UserCKKSKeyChain, *ckksKeychain)
+	user.UserECDSAKeyChain = append(user.UserECDSAKeyChain, *ecdsaKeychain)
+
+	return user, nil
 }
 
 // --- 写入部分 ---
