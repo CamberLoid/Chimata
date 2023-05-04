@@ -4,6 +4,7 @@ package clientlib
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/CamberLoid/Chimata/internal/transaction"
 	"github.com/google/uuid"
@@ -24,8 +25,14 @@ func (u User) NewOutgoingTransaction(receipt *User) (t *transaction.Transaction,
 // 输出：一个新的 Transaction
 func (u User) TransferBySenderPK(receipt *User, amount float64) (t *transaction.Transaction, err error) {
 	ct, sig, err := u.makeTransferWithCKKS(u.User.UserCKKSKeyChain[0].CKKSPublicKey, amount)
+	if err != nil {
+		return nil, err
+	}
 
 	t, err = u.NewOutgoingTransaction(receipt)
+	if err != nil {
+		return nil, err
+	}
 	t.CTSender, err = ct.MarshalBinary()
 	if err != nil {
 		return nil, err
@@ -42,8 +49,14 @@ func (u User) TransferBySenderPK(receipt *User, amount float64) (t *transaction.
 // 输出：一个新的Transaction
 func (u User) TransferByReceiptPK(receipt *User, amount float64) (t *transaction.Transaction, err error) {
 	ct, sig, err := u.makeTransferWithCKKS(receipt.User.UserCKKSKeyChain[0].CKKSPublicKey, amount)
+	if err != nil {
+		return nil, err
+	}
 
 	t, err = u.NewOutgoingTransaction(receipt)
+	if err != nil {
+		return nil, err
+	}
 
 	t.CTReceipt, err = ct.MarshalBinary()
 	if err != nil {
@@ -103,6 +116,10 @@ func (u User) AcceptTransaction(t interface{}) (sig []byte, err error) {
 }
 
 func (u User) AcceptTransactionByTransaction(t *transaction.Transaction) (sig []byte, err error) {
+	if len(t.CTSender) == 0 {
+		return nil, fmt.Errorf("CTSender is empty, please check the transaction")
+	}
+
 	// 生成签名
 	sig, err = signByte([]byte("ACCEPT"+string(t.CTSender)), u.UserECDSAKeyChain[0].ECDSAPrivateKey)
 	if err != nil {
@@ -123,4 +140,6 @@ func (u User) AcceptTransactionByUUID(uuid uuid.UUID) (sig []byte, err error) {
 	return u.AcceptTransactionByTransaction(t)
 }
 
-func (u User) RejectTransactionByTransaction()
+func (u User) RejectTransactionByTransaction() {
+	panic("not implemented")
+}

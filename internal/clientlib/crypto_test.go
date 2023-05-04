@@ -1,10 +1,8 @@
 package clientlib_test
 
 import (
-	"crypto/rand"
 	"fmt"
 	"math"
-	"math/big"
 	"testing"
 
 	"github.com/CamberLoid/Chimata/internal/clientlib"
@@ -29,8 +27,7 @@ func BenchmarkCKKSEncryptAndDecrypt(b *testing.B) {
 
 func testCKKSEncryptAndDecrypt() (bool, error) {
 	// 创建一个随机浮点数
-	randInt, _ := rand.Int(rand.Reader, big.NewInt(1000000))
-	randFloat := float64(randInt.Int64()) / 100.0
+	randFloat := clientlib.GenRandFloat()
 	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
 	keyGen := ckks.NewKeyGenerator(params)
 	sk, pk := keyGen.GenKeyPair()

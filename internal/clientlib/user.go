@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 
 	"github.com/CamberLoid/Chimata/internal/users"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
@@ -16,7 +17,7 @@ type User struct {
 	users.User
 
 	// 服务端认证，现阶段不考虑
-	oAuth string
+	OAuth string
 }
 
 // ImportCKKSKeychainFromFile 从文件中导入 CKKS 密钥链
@@ -92,6 +93,24 @@ func (u User) checkSignAvailability() (e error) {
 		return errors.New("No ECDSA Private Key found!")
 	}
 	return nil
+}
+
+// VerifyCTSignature 以密文对象为输入，验证签名
+func (u User) VerifyCTSignature(ct *rlwe.Ciphertext, sig []byte) (bool, error) {
+	if ct == nil {
+		return false, fmt.Errorf("no ciphertext found")
+	}
+	ctBytes, err := ct.MarshalBinary()
+	if err != nil {
+		return false, err
+	}
+	return u.VerifySignature(ctBytes, sig)
+}
+
+// Low-level 验证签名方法
+func (u User) VerifySignature(payload []byte, sig []byte) (bool, error) {
+	hash := sha256.Sum256(payload)
+	return ecdsa.VerifyASN1(u.UserECDSAKeyChain[0].ECDSAPublicKey, hash[:], sig), nil
 }
 
 // --- 解密部分 ---
