@@ -39,12 +39,15 @@ func CryptoInit() (err error) {
 // 输入：金额，公钥
 // 输出：密文（rlwe.ct）
 func CKKSEncryptAmount(amount float64, pk *rlwe.PublicKey) *rlwe.Ciphertext {
-	pt := CKKSEncoder.EncodeNew(
-		amount,
-		CKKSParams.MaxLevel(),
-		CKKSParams.DefaultScale(),
-		CKKSParams.LogSlots())
-	ct := ckks.NewEncryptor(CKKSParams, pk).EncryptNew(pt)
+	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
+	encoder := ckks.NewEncoder(params)
+	amountSlice := []float64{amount}
+	pt := encoder.EncodeNew(
+		amountSlice,
+		params.MaxLevel(),
+		params.DefaultScale(),
+		params.LogSlots())
+	ct := ckks.NewEncryptor(params, pk).EncryptNew(pt)
 
 	return ct
 }
@@ -53,9 +56,12 @@ func CKKSEncryptAmount(amount float64, pk *rlwe.PublicKey) *rlwe.Ciphertext {
 // 输入：密文（ct），私钥
 // 输出：金额（float64）
 func CKKSDecryptAmountFromCT(ct *rlwe.Ciphertext, sk *rlwe.SecretKey) float64 {
-	decryptor := ckks.NewDecryptor(CKKSParams, sk)
+	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
+	encoder := ckks.NewEncoder(params)
+	decryptor := ckks.NewDecryptor(params, sk)
+
 	pt := decryptor.DecryptNew(ct)
-	amount := CKKSEncoder.Decode(pt, CKKSParams.LogSlots())
+	amount := encoder.Decode(pt, params.LogSlots())
 
 	return roundToCent(real(amount[0]))
 }
