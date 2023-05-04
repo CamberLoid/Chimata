@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	"github.com/CamberLoid/Chimata/internal/db"
-	"github.com/CamberLoid/Chimata/internal/misc"
 	"github.com/CamberLoid/Chimata/internal/transaction"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
 type Client struct {
@@ -89,15 +89,15 @@ func (c Client) GetTransactionAmount(t interface{}) (amount float64, err error) 
 
 func (c Client) getTransactionAmount(t *transaction.Transaction) (amount float64, err error) {
 	id := c.MainUser.UserIdentifier
-	ct := misc.NewCiphertext()
+	var ct *rlwe.Ciphertext
 	if t.Sender == id {
-		err = ct.UnmarshalBinary(t.CTSender)
+		ct, err = t.GetSenderCT()
 		if err != nil {
 			return 0, err
 		}
 		return c.MainUser.DecryptAmountFromCT(ct)
 	} else if t.Receipt == id {
-		err = ct.UnmarshalBinary(t.CTReceipt)
+		ct, err = t.GetReceiptCT()
 		if err != nil {
 			return 0, err
 		}

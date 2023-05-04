@@ -70,6 +70,7 @@ func verifyTransactionConfirmingStage(tx *transaction.Transaction) (res bool, er
 }
 
 func verifyTransactionSenderPK(tx *transaction.Transaction) (res bool, err error) {
+	DebugLogger.Print("Going in verifyTransactionSenderPK")
 	SignerUUID := tx.CTSenderSignedBy
 
 	pubkey, err := db.GetECDSAKeyByUserUUID(Database, SignerUUID)
@@ -90,6 +91,7 @@ func verifyTransactionSenderPK(tx *transaction.Transaction) (res bool, err error
 }
 
 func verifyTransactionReceiptPK(tx *transaction.Transaction) (res bool, err error) {
+	DebugLogger.Print("Going in verifyTransactionReceiptPK")
 	SignerUUID := tx.CTReceiptSignedBy
 
 	pubkey, err := db.GetECDSAKeyByUserUUID(Database, SignerUUID)

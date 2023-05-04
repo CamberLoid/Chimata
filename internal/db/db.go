@@ -51,11 +51,11 @@ func CreateUserTable() string {
 // uuid TEXT PRIMARY KEY
 // userIn TEXT, as FOREIGN KEY Users(uuid)
 // userOut TEXT, as FOREIGN KEY to Users(uuid)
-// pkIn, pkOut BLOB, as FOREIGN KEY to CKKSPublicKeys(uuid)
+// pkIn, pkOut BLOB, as FOREIGN KEY to CKKSKeyChains(uuid)
 // SwitchingKey BLOB
 func CreateSwitchingKeyTable() string {
 	return `
-		CREATE TABLE IF NOT EXISTS SwitchingKey(
+		CREATE TABLE IF NOT EXISTS SwitchingKeys(
 			uuid TEXT PRIMARY KEY,
 			userIn TEXT,
 			userOut TEXT,
@@ -64,13 +64,13 @@ func CreateSwitchingKeyTable() string {
 			SwitchingKey BLOB NOT NULL,
 			FOREIGN KEY (userIn) REFERENCES Users(uuid),
 			FOREIGN KEY (userOut) REFERENCES Users(uuid),
-			FOREIGN KEY (pkIn) REFERENCES CKKSPublicKeys(uuid),
-			FOREIGN KEY (pkOut) REFERENCES CKKSPublicKeys(uuid)
+			FOREIGN KEY (pkIn) REFERENCES CKKSKeyChains(uuid),
+			FOREIGN KEY (pkOut) REFERENCES CKKSKeyChains(uuid)
 		);
 	`
 }
 
-// table CKKSPublicKeys
+// table CKKSKeyChains
 // uuid TEXT 作为主键
 // user TEXT 作为指向 Users(uuid) 的外键, cannot be null
 // publicKey blob, cannot be null
@@ -80,7 +80,7 @@ func CreateSwitchingKeyTable() string {
 // CreateCKKSKeyTable 新的 CKKS 公钥表
 func CreateCKKSKeyTable() string {
 	return `
-		CREATE TABLE IF NOT EXISTS CKKSPublicKeys (
+		CREATE TABLE IF NOT EXISTS CKKSKeyChains (
 			uuid TEXT PRIMARY KEY,
 			user TEXT NOT NULL REFERENCES Users(uuid),
 			publicKey BLOB NOT NULL,
@@ -90,15 +90,15 @@ func CreateCKKSKeyTable() string {
 	`
 }
 
-// table ECDSAPublicKeys
+// table ECDSAKeyChains
 // uuid TEXT
 // user TEXT as FOREIGN KEY
 // publicKey BLOB
 
-// createECDSAPublicKeyTable 创建新的ECDSA公钥表
+// createECDSAKeyChainsTable 创建新的ECDSA公钥表
 func CreateECDSAKeyTable() string {
 	return `
-		CREATE TABLE IF NOT EXISTS ECDSAPublicKeys (
+		CREATE TABLE IF NOT EXISTS ECDSAKeyChains (
 			uuid TEXT PRIMARY KEY,
 			user TEXT NOT NULL REFERENCES Users(uuid),
 			publicKey BLOB NOT NULL,

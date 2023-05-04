@@ -19,7 +19,7 @@ import (
 
 func GetTransaction(db *sql.DB, txUUID uuid.UUID) (tx *transaction.Transaction, err error) {
 	stmt, err := db.Prepare(`
-	SELECT confirmingPhase, uuid, sender, receipt,
+	SELECT confirming_phase, uuid, sender, receipt,
 		ctSender, ctReceipt, sigCtSender, ctSenderSignedBy,
 		sigCTReceipt, ctReceiptSignedBy, timeStamp, isValid
 	FROM Transactions
@@ -65,16 +65,12 @@ func GetTransaction(db *sql.DB, txUUID uuid.UUID) (tx *transaction.Transaction, 
 
 // 查询用户余额
 func GetUserBalance(db *sql.DB, UserUUID uuid.UUID) (balance *rlwe.Ciphertext, err error) {
-	row, err := db.Query(`
+	row := db.QueryRow(`
 		SELECT balance
 		FROM Users
 		WHERE uuid = ?;
 		`, UserUUID,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer row.Close()
 
 	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
 	balance = rlwe.NewCiphertext(
@@ -93,22 +89,19 @@ func GetUserBalance(db *sql.DB, UserUUID uuid.UUID) (balance *rlwe.Ciphertext, e
 
 func GetECDSAKeyByUserUUID(db *sql.DB, UserUUID uuid.UUID) (keyChain *key.ECDSAKeyChain, err error) {
 	keyChain = new(key.ECDSAKeyChain)
-	row, err := db.Query(`
+	row := db.QueryRow(`
 		SELECT uuid, publicKey, privateKey
-		FROM ECDSAPublicKeys
+		FROM ECDSAKeyChains
 		WHERE user = ?;
 		`, UserUUID,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer row.Close()
 
 	var pubkeyBytes, privateKeyBytes []byte
 	var identifier uuid.UUID
 
-	if row.Scan(&identifier, &pubkeyBytes, &privateKeyBytes) != nil {
-		return nil, fmt.Errorf("failed to scan ECDSA key bytes: %v", err)
+	err = row.Scan(&identifier, &pubkeyBytes, &privateKeyBytes)
+	if err != nil {
+		return nil, err
 	}
 
 	keyChain.Identifier = identifier
@@ -148,7 +141,7 @@ func GetCKKSKeyByUserUUID(db *sql.DB, UserUUID uuid.UUID) (keyChain *key.CKKSKey
 	// 查询
 	row, err := db.Query(`
 		SELECT uuid, publicKey, privateKey
-		FROM CKKSPublicKeys
+		FROM CKKSKeyChains
 		WHERE user = ?;
 		`, UserUUID,
 	)
@@ -181,15 +174,10 @@ func GetSwitchingKeyPKInPKOut(db *sql.DB, pkIDIn, pkIDOut uuid.UUID) (swk *rlwe.
 	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
 	swk = rlwe.NewSwitchingKey(params.Parameters, params.RingQ().NewPoly().Level(), params.RingP().NewPoly().Level())
 
-	row, err := db.Query(`
+	row := db.QueryRow(`
 		SELECT switchingKey FROM SwitchingKeys
-		WHERE pkIDIn = ? AND pkIDOut = ?;
+		WHERE pkIn = ? AND pkOut = ?;
 	`, pkIDIn, pkIDOut)
-
-	if err != nil {
-		return nil, err
-	}
-	defer row.Close()
 
 	var swkByte []byte
 	if row.Scan(&swkByte) != nil {
@@ -204,15 +192,10 @@ func GetSwitchingKeyUserIDInOut(db *sql.DB, UserIDIn, UserIDOut uuid.UUID) (swk 
 	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
 	swk = rlwe.NewSwitchingKey(params.Parameters, params.RingQ().NewPoly().Level(), params.RingP().NewPoly().Level())
 
-	row, err := db.Query(`
+	row := db.QueryRow(`
 		SELECT switchingKey FROM SwitchingKeys
-		WHERE pkIDIn = ? AND pkIDOut = ?;
+		WHERE userIn = ? AND userOut = ?;
 	`, UserIDIn, UserIDOut)
-
-	if err != nil {
-		return nil, err
-	}
-	defer row.Close()
 
 	var swkByte []byte
 	if row.Scan(&swkByte) != nil {
@@ -274,9 +257,9 @@ func GetUser(db *sql.DB, UserUUID uuid.UUID) (user *users.User, err error) {
 func WriteTransaction(db *sql.DB, tx *transaction.Transaction) (err error) {
 	stmt, err := db.Prepare(`
 		INSERT INTO Transactions (
-			ConfirmingPhase, UUID, Sender, Receipt, CTSender, CTReceipt,
-			SigCTSender, CTSenderSignedBy, SigCTReceipt, CTReceiptSignedBy,
-			TimeStamp, IsValid
+			confirming_phase, UUID, Sender, Receipt, ct_sender, ct_receipt,
+			Sig_ct_sender, ct_sender_signed_by, sig_ct_receipt, ct_receipt_signed_by,
+			TimeStamp, is_valid
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (uuid) DO UPDATE
@@ -318,7 +301,7 @@ func UpdateBalance(db *sql.DB, userUUID uuid.UUID, balance *rlwe.Ciphertext) (er
 	}
 
 	stmt, err := db.Prepare(`
-		UPDATE Balances SET balance = ? WHERE user_uuid = ?
+		UPDATE Users SET balance = ? WHERE uuid = ?
 	`)
 	if err != nil {
 		return err
@@ -365,7 +348,7 @@ func PutCKKSPublicKeyColumn(db *sql.DB, keyID, userID uuid.UUID, pk *rlwe.Public
 	}
 
 	stmt, err := db.Prepare(`
-		INSERT INTO CKKSPublicKeys
+		INSERT INTO CKKSKeyChains
 		(uuid, user, publicKey)
 		VALUES
 		(?,?,?)
@@ -387,7 +370,7 @@ func PutECDSAPublicKeyColumn(db *sql.DB, keyID, userID uuid.UUID, pk *ecdsa.Publ
 	}
 
 	stmt, err := db.Prepare(`
-		INSERT INTO ECDSAPublicKeys 
+		INSERT INTO ECDSAKeyChains 
 		(uuid, user, publicKey)
 		VALUES
 		(?, ?, ?)
@@ -397,7 +380,7 @@ func PutECDSAPublicKeyColumn(db *sql.DB, keyID, userID uuid.UUID, pk *ecdsa.Publ
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(keyID, userID, pkBytes)
+	_, err = stmt.Exec(keyID.String(), userID.String(), pkBytes)
 	return
 }
 
@@ -409,7 +392,7 @@ func PutSwitchingKeyColumnByUserInUserOut(db *sql.DB, keyID, userIn, userOut uui
 	}
 
 	stmt, err := db.Prepare(`
-		INSERT INTO SwitchingKey
+		INSERT INTO SwitchingKeys
 		(uuid, userIn, userOut, SwitchingKey)
 		VALUES
 		(?, ?, ?, ?)
@@ -420,6 +403,6 @@ func PutSwitchingKeyColumnByUserInUserOut(db *sql.DB, keyID, userIn, userOut uui
 	defer stmt.Close()
 
 	_, err = stmt.Exec(keyID, userIn, userOut, swkBytes)
-	return
+	return err
 
 }

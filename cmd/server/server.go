@@ -52,12 +52,15 @@ func main() {
 	// 交易部分
 	http.HandleFunc("/transaction/create/bySenderPK", HandlerTransactionCreateBySenderPK)
 	http.HandleFunc("/transaction/create/byReceiptPK", HandlerTransactionCreateByReceiptPK)
-	http.HandleFunc("/transaction/get", todo)
+	http.HandleFunc("/transaction/get", HandlerTransactionGet)
 	http.HandleFunc("/transaction/confirm", HandlerTransactionConfirm)
 
 	// 用户部分
 	http.HandleFunc("/user/getBalance", todo)
 	http.HandleFunc("/user/getTransaction", todo)
+
+	http.HandleFunc("/register/user", HandlerRegisterUser)
+	http.HandleFunc("/register/swk", HandlerRegisterSwk)
 
 	if Database, err = InitDatabase(); err != nil {
 		CriticalLogger.Fatal(err.Error())

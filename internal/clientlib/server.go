@@ -4,8 +4,10 @@ package clientlib
 
 import (
 	"bytes"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 
@@ -15,11 +17,13 @@ import (
 )
 
 const (
-	DefaultServerURL           string = "http://localhost:16001"
+	DefaultServerURL           string = "http://127.0.0.1:16001"
 	TransactionCreateEndpoint  string = "/transaction/create"
 	TransactionConfirmEndpoint string = "/transaction/confirm"
 	TransactionGetEndpoint     string = "/transaction/get"
 	GetBalanceEndpoint         string = "/user/getBalance"
+	RegisterUserEndpoint       string = "/register/user"
+	RegisterSwkEndpoint        string = "/register/swk"
 )
 
 var (
@@ -32,7 +36,84 @@ type HTTPRequestJSON struct {
 }
 
 type GetBalanceJSON struct {
-	UserUUID [16]byte `json: "useruuid"`
+	UserUUID [16]byte `json:"useruuid"`
+}
+
+// --- 注册部分 ---
+
+type UserRegisterReq struct {
+	UUID         uuid.UUID `json:"uuid"`
+	Name         string    `json:"name"`
+	CKKS_pubkey  []byte    `json:"ckks_pubkey"`
+	ECDSA_pubkey []byte    `json:"ecdsa_pubkey"`
+}
+
+func (u *User) RegisterUser() error {
+	request := new(UserRegisterReq)
+	var err error
+	if len(u.UserIdentifier) == 0 {
+		u.UserIdentifier = uuid.New()
+	}
+	request.UUID = u.UserIdentifier
+	request.Name = u.UserName
+	pk, err := u.UserCKKSKeyChain[0].CKKSPublicKey.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	request.CKKS_pubkey = pk
+	epk, err := x509.MarshalPKIXPublicKey(u.UserECDSAKeyChain[0].ECDSAPublicKey)
+	if err != nil {
+		return err
+	}
+	request.ECDSA_pubkey = epk
+
+	jsonBytes, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	resp, err := http.Post(ConfigServerURL+RegisterUserEndpoint, "application/json", bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		return err
+	}
+	if resp.Status != "200 OK" {
+		return fmt.Errorf("returned " + resp.Status)
+	}
+
+	return nil
+}
+
+type RegisterSwkReq struct {
+	UserIn  uuid.UUID `json:"userIn"`
+	UserOut uuid.UUID `json:"userOut"`
+	Swk     []byte    `json:"swk"`
+}
+
+func RegisterSwk(userIn, userOut uuid.UUID, swk *rlwe.SwitchingKey) error {
+	swkBytes, err := swk.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	req := &RegisterSwkReq{
+		UserIn:  userIn,
+		UserOut: userOut,
+		Swk:     swkBytes,
+	}
+
+	jsonBytes, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	fmt.Print(ConfigServerURL + RegisterSwkEndpoint)
+	resp, err := http.Post(ConfigServerURL+RegisterSwkEndpoint, "application/json", bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		return err
+	}
+	if resp.Status != "200 OK" {
+		return fmt.Errorf("returned " + resp.Status)
+	}
+
+	return nil
 }
 
 // --- 创建交易部分 ---
@@ -87,7 +168,7 @@ func (u *User) createTransferJob(t *transaction.Transaction, server string) (new
 // CreateReceiveTask 创建一个接受任务，提交至云端，并将接受任务的 UUID/流水号返回
 // 目前不考虑
 func (u *User) CreateReceiveJob(target User) error {
-	return errors.New("not implemented yet!")
+	return errors.New("not implemented yet")
 }
 
 // ServerGetBalance 从服务端获取用户的余额密文。一个更优雅的方法是调用 User.ServerGetBalance()。
@@ -105,6 +186,9 @@ func ServerGetBalance(server string, target uuid.UUID) (balance *rlwe.Ciphertext
 	}
 
 	payload, err := json.Marshal(GetBalanceJSON{UserUUID: target})
+	if err != nil {
+		return nil, err
+	}
 
 	resp, err := http.NewRequest("GET", server, bytes.NewBuffer(payload))
 
@@ -113,6 +197,9 @@ func ServerGetBalance(server string, target uuid.UUID) (balance *rlwe.Ciphertext
 	}
 
 	err = json.NewDecoder(resp.Body).Decode(&jsonData)
+	if err != nil {
+		return nil, err
+	}
 
 	if err = CheckIfOK(jsonData); err != nil {
 		return nil, err
@@ -120,7 +207,7 @@ func ServerGetBalance(server string, target uuid.UUID) (balance *rlwe.Ciphertext
 
 	balanceString := jsonData["balance"].(string)
 	if balanceString == "" {
-		return nil, errors.New("Balance not found")
+		return nil, errors.New("balance not found")
 	}
 
 	balance = new(rlwe.Ciphertext)
@@ -151,6 +238,9 @@ func (u User) CreateConfirmTransactionTask(t *transaction.Transaction) error {
 
 	var jsonData map[string]interface{}
 	err = json.NewDecoder(resp.Body).Decode(&jsonData)
+	if err != nil {
+		return err
+	}
 
 	if jsonData["status"].(string) != "OK" {
 		return errors.New("status is not ok " + jsonData["err"].(string))
@@ -176,6 +266,9 @@ func getTransactionFromServer(server string, id uuid.UUID) (tx *transaction.Tran
 	}
 
 	payload, err := json.Marshal(*tx)
+	if err != nil {
+		return nil, err
+	}
 
 	resp, err := http.NewRequest("GET", server, bytes.NewBuffer(payload))
 
@@ -184,6 +277,9 @@ func getTransactionFromServer(server string, id uuid.UUID) (tx *transaction.Tran
 	}
 
 	err = json.NewDecoder(resp.Body).Decode(&jsonData)
+	if err != nil {
+		return nil, err
+	}
 
 	if err = CheckIfOK(jsonData); err != nil {
 		return nil, err
@@ -224,6 +320,7 @@ func CheckIfOK(jsonData map[string]interface{}) (err error) {
 
 func UnmarshalTransactionFromResponse(resp *http.Response) (*transaction.Transaction, error) {
 	var respJSON map[string]interface{}
+	newT := new(transaction.Transaction)
 	err := json.NewDecoder(resp.Body).Decode(&respJSON)
 	if err != nil {
 		return nil, err
@@ -233,10 +330,12 @@ func UnmarshalTransactionFromResponse(resp *http.Response) (*transaction.Transac
 		return nil, errors.New(respJSON["err"].(string))
 	}
 
-	var newT transaction.Transaction
-	err = json.Unmarshal([]byte(respJSON["transaction"].(string)), &newT)
+	outer := respJSON["transaction"].(map[string]interface{})
+	outerJSON, _ := json.Marshal(outer)
+	err = json.Unmarshal(outerJSON, newT)
+
 	if err != nil {
 		return nil, err
 	}
-	return &newT, nil
+	return newT, nil
 }

@@ -1,14 +1,20 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/CamberLoid/Chimata/internal/db"
+	"github.com/CamberLoid/Chimata/internal/key"
 	"github.com/CamberLoid/Chimata/internal/serverlib"
 	"github.com/CamberLoid/Chimata/internal/transaction"
+	"github.com/CamberLoid/Chimata/internal/users"
 	"github.com/google/uuid"
+	"github.com/tuneinsight/lattigo/v4/ckks"
+	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
 // 还没实现的功能的处理函数
@@ -17,7 +23,7 @@ func todo(w http.ResponseWriter, req *http.Request) {
 }
 
 func HandleNotFound(w http.ResponseWriter, req *http.Request) {
-	returnFailure(w, req, fmt.Errorf("function not found"), 404)
+	returnFailure(w, req, fmt.Errorf("function not found: "+req.RequestURI), 404)
 }
 
 // Generic failure
@@ -46,6 +52,7 @@ func HandlerVersion(w http.ResponseWriter, req *http.Request) {
 
 // Handle /transaction/create/bySenderPK request
 func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request) {
+	InfoLogger.Print("New incoming /transaction/create/bySenderPK request")
 	var err error
 	tx := new(transaction.Transaction)
 
@@ -127,6 +134,14 @@ func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request
 
 	w.WriteHeader(200)
 	w.Write(respJSON)
+	InfoLogger.Print("Proceeded /transaction/create/bySenderPK request")
+
+	// 更新
+	tx.ConfirmingPhase = "confirmed"
+	if err = db.WriteTransaction(Database, tx); err != nil {
+		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
 }
 
 // Handle /transaction/create/byReceiptPK request
@@ -312,4 +327,165 @@ func HandlerTransactionGet(w http.ResponseWriter, req *http.Request) {
 
 	w.WriteHeader(200)
 	w.Write(respJSON)
+}
+
+// --- 注册部分 ---
+
+type UserRegisterReq struct {
+	UUID         uuid.UUID `json:"uuid"`
+	Name         string    `json:"name"`
+	CKKS_pubkey  []byte    `json:"ckks_pubkey"`
+	ECDSA_pubkey []byte    `json:"ecdsa_pubkey"`
+}
+
+type RegisterSwkReq struct {
+	UserIn  uuid.UUID `json:"userIn"`
+	UserOut uuid.UUID `json:"userOut"`
+	Swk     []byte    `json:"swk"`
+}
+
+// Handle /register/swk
+func HandlerRegisterSwk(w http.ResponseWriter, req *http.Request) {
+	InfoLogger.Print("Received new /register/swk")
+	var err error
+
+	request := new(RegisterSwkReq)
+	err = json.NewDecoder(req.Body).Decode(request)
+	if err != nil {
+		returnFailure(w, req, err, 400)
+		return
+	}
+
+	id := uuid.New()
+
+	ckksSwkBytes := request.Swk
+	ckksSwk := new(rlwe.SwitchingKey)
+	err = ckksSwk.UnmarshalBinary(ckksSwkBytes)
+	if err != nil {
+		returnFailure(w, req,
+			fmt.Errorf("ckks swk parse failed"+err.Error()), 400)
+		return
+	}
+	DebugLogger.Print("Got swk, size = " + fmt.Sprint(ckksSwk.MarshalBinarySize()))
+
+	err = db.PutSwitchingKeyColumnByUserInUserOut(Database, id,
+		request.UserIn, request.UserOut, ckksSwk)
+	if err != nil {
+		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
+
+	respData := make(map[string]interface{})
+	respData["status"] = "OK"
+
+	respJSON, err := json.Marshal(respData)
+	if err != nil {
+		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Write(respJSON)
+	InfoLogger.Print("Processed new /register/swk")
+
+}
+
+// Handle /register/User
+func HandlerRegisterUser(w http.ResponseWriter, req *http.Request) {
+	InfoLogger.Print("Received new /register/user")
+	var err error
+
+	request := new(UserRegisterReq)
+	err = json.NewDecoder(req.Body).Decode(request)
+	if err != nil {
+		returnFailure(w, req, err, 400)
+		return
+	}
+
+	userName := request.Name
+	userUUID := request.UUID
+
+	// Parse CKKS and ECDSA Public Key
+	ckksPubkeyBytes := request.CKKS_pubkey
+	if len(ckksPubkeyBytes) == 0 {
+		returnFailure(w, req,
+			fmt.Errorf("ckks pubkey parse failed"), 400)
+		return
+	}
+	ckksPubkey := rlwe.NewPublicKey(GetCKKSParams().Parameters)
+	if err = ckksPubkey.UnmarshalBinary(ckksPubkeyBytes); err != nil {
+		returnFailure(w, req,
+			fmt.Errorf("ckks pubkey parse failed: "+err.Error()), 400)
+		return
+	}
+
+	ecdsaPubkeyBytes := request.ECDSA_pubkey
+	if len(ecdsaPubkeyBytes) == 0 {
+		returnFailure(w, req,
+			fmt.Errorf("ecdsa pubkey parse failed: "+err.Error()), 400)
+		return
+	}
+	var ecdsaPubkey *ecdsa.PublicKey
+	if ecdsaPubkeyAny, err := x509.ParsePKIXPublicKey(ecdsaPubkeyBytes); err != nil {
+		returnFailure(w, req,
+			fmt.Errorf("ecdsa pubkey parse failed: "+err.Error()), 400)
+		return
+	} else {
+		ecdsaPubkey = ecdsaPubkeyAny.(*ecdsa.PublicKey)
+	}
+
+	// 写入数据库
+	// Fixme: 默认余额允许非0
+	usr := users.NewUserWithUserName(userName)
+	usr.UserIdentifier = userUUID
+	usr.UserCKKSKeyChain = append(usr.UserCKKSKeyChain, key.CKKSKeyChain{
+		Identifier:     uuid.New(),
+		CKKSPublicKey:  ckksPubkey,
+		CKKSPrivateKey: nil,
+	})
+	usr.UserECDSAKeyChain = append(usr.UserECDSAKeyChain, key.ECDSAKeyChain{
+		Identifier:      uuid.New(),
+		ECDSAPublicKey:  ecdsaPubkey,
+		ECDSAPrivateKey: nil,
+	})
+	params := GetCKKSParams()
+	balance := ckks.NewEncryptor(params, ckksPubkey).EncryptNew(
+		ckks.NewEncoder(params).EncodeNew(
+			[]float64{0}, params.MaxLevel(), params.DefaultScale(), params.MaxLogSlots(),
+		),
+	)
+	err = db.PutUserColumn(Database, usr, balance)
+	if err != nil {
+		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
+	err = db.PutCKKSPublicKeyColumn(
+		Database, usr.UserCKKSKeyChain[0].Identifier,
+		usr.UserIdentifier, ckksPubkey,
+	)
+	if err != nil {
+		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
+	err = db.PutECDSAPublicKeyColumn(
+		Database, usr.UserECDSAKeyChain[0].Identifier,
+		usr.UserIdentifier, ecdsaPubkey,
+	)
+	if err != nil {
+		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
+
+	respData := make(map[string]interface{})
+	respData["status"] = "OK"
+
+	respJSON, err := json.Marshal(respData)
+	if err != nil {
+		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Write(respJSON)
+	InfoLogger.Print("Processed new /register/user, uuid = " + userUUID.String())
 }

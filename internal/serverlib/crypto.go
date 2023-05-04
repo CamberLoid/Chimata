@@ -36,7 +36,7 @@ func ReEncryptCTWithSwk(ctIn *rlwe.Ciphertext, swk *rlwe.SwitchingKey) (ctOut *r
 // 输入公钥和密文和签名
 // 输出验证结果
 func ValidateSignatureForCipherText(ct interface{}, sig []byte, pk *ecdsa.PublicKey) (isValid bool, err error) {
-	var _ct *rlwe.Ciphertext
+	_ct := new(rlwe.Ciphertext)
 	var msg []byte
 	switch v := ct.(type) {
 	case *rlwe.Ciphertext:

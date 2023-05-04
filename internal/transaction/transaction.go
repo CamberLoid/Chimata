@@ -14,7 +14,9 @@ import (
 // CTSender,CTReceipt: []byte <- rlwe.CipherText.MarshalBinary()
 // sig(略): []byte，签名，只会有三种可能的签名方：CA、发送者和接受者
 type Transaction struct {
-	// ConfirmingPhase 可能是 "unconfirmed", "waiting", "processing", "rejected", "confirmed", "failed"
+	// ConfirmingPhase 可能是
+	// "unconfirmed", "waiting", "processing",
+	// "rejected", "confirmed", "failed"
 	ConfirmingPhase   string    `json:"confirmingPhase"`
 	UUID              uuid.UUID `json:"uuid"`
 	Sender            uuid.UUID `json:"sender"`
