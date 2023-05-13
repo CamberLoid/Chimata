@@ -56,7 +56,7 @@ func main() {
 	http.HandleFunc("/transaction/confirm", HandlerTransactionConfirm)
 
 	// 用户部分
-	http.HandleFunc("/user/getBalance", todo)
+	http.HandleFunc("/user/getBalance", HandlerUserGetBalance)
 	http.HandleFunc("/user/getTransaction", todo)
 
 	http.HandleFunc("/register/user", HandlerRegisterUser)

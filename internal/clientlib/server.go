@@ -5,12 +5,14 @@ package clientlib
 import (
 	"bytes"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 
+	"github.com/CamberLoid/Chimata/internal/restfulpayload"
 	"github.com/CamberLoid/Chimata/internal/transaction"
 	"github.com/google/uuid"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
@@ -41,15 +43,8 @@ type GetBalanceJSON struct {
 
 // --- 注册部分 ---
 
-type UserRegisterReq struct {
-	UUID         uuid.UUID `json:"uuid"`
-	Name         string    `json:"name"`
-	CKKS_pubkey  []byte    `json:"ckks_pubkey"`
-	ECDSA_pubkey []byte    `json:"ecdsa_pubkey"`
-}
-
 func (u *User) RegisterUser() error {
-	request := new(UserRegisterReq)
+	request := new(restfulpayload.UserRegisterReq)
 	var err error
 	if len(u.UserIdentifier) == 0 {
 		u.UserIdentifier = uuid.New()
@@ -60,12 +55,12 @@ func (u *User) RegisterUser() error {
 	if err != nil {
 		return err
 	}
-	request.CKKS_pubkey = pk
+	request.CKKS_pubkey = base64.RawStdEncoding.EncodeToString(pk)
 	epk, err := x509.MarshalPKIXPublicKey(u.UserECDSAKeyChain[0].ECDSAPublicKey)
 	if err != nil {
 		return err
 	}
-	request.ECDSA_pubkey = epk
+	request.ECDSA_pubkey = base64.RawStdEncoding.EncodeToString(epk)
 
 	jsonBytes, err := json.Marshal(request)
 	if err != nil {
@@ -82,29 +77,23 @@ func (u *User) RegisterUser() error {
 	return nil
 }
 
-type RegisterSwkReq struct {
-	UserIn  uuid.UUID `json:"userIn"`
-	UserOut uuid.UUID `json:"userOut"`
-	Swk     []byte    `json:"swk"`
-}
-
 func RegisterSwk(userIn, userOut uuid.UUID, swk *rlwe.SwitchingKey) error {
+	req := new(restfulpayload.RegisterSwkReq)
 	swkBytes, err := swk.MarshalBinary()
 	if err != nil {
 		return err
 	}
+	swkBase64 := base64.RawStdEncoding.EncodeToString(swkBytes)
 
-	req := &RegisterSwkReq{
-		UserIn:  userIn,
-		UserOut: userOut,
-		Swk:     swkBytes,
-	}
+	// Form payload
+	req.UserIn = userIn
+	req.UserOut = userOut
+	req.Swk = swkBase64
 
 	jsonBytes, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}
-	fmt.Print(ConfigServerURL + RegisterSwkEndpoint)
 	resp, err := http.Post(ConfigServerURL+RegisterSwkEndpoint, "application/json", bytes.NewBuffer(jsonBytes))
 	if err != nil {
 		return err
@@ -139,7 +128,7 @@ func (u *User) createTransferJob(t *transaction.Transaction, server string) (new
 
 	// 将交易信息整理成 JSON 格式
 	// 交易信息包括：发送者的 UUID，接收者的 UUID，加密后的金额，签名
-	payload, err := json.Marshal(t)
+	payload, err := json.Marshal(t.CopyToJSONStruct())
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +200,11 @@ func ServerGetBalance(server string, target uuid.UUID) (balance *rlwe.Ciphertext
 	}
 
 	balance = new(rlwe.Ciphertext)
-	err = balance.UnmarshalBinary([]byte(balanceString))
+	balanceBytes, err := base64.StdEncoding.DecodeString(balanceString)
+	if err != nil {
+		return nil, err
+	}
+	err = balance.UnmarshalBinary(balanceBytes)
 
 	return
 }
@@ -320,7 +313,7 @@ func CheckIfOK(jsonData map[string]interface{}) (err error) {
 
 func UnmarshalTransactionFromResponse(resp *http.Response) (*transaction.Transaction, error) {
 	var respJSON map[string]interface{}
-	newT := new(transaction.Transaction)
+	newT := new(transaction.TransactionJSON)
 	err := json.NewDecoder(resp.Body).Decode(&respJSON)
 	if err != nil {
 		return nil, err
@@ -337,5 +330,5 @@ func UnmarshalTransactionFromResponse(resp *http.Response) (*transaction.Transac
 	if err != nil {
 		return nil, err
 	}
-	return newT, nil
+	return newT.CopyToStruct()
 }

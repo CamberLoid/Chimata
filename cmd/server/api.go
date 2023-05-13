@@ -3,12 +3,14 @@ package main
 import (
 	"crypto/ecdsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/CamberLoid/Chimata/internal/db"
 	"github.com/CamberLoid/Chimata/internal/key"
+	"github.com/CamberLoid/Chimata/internal/restfulpayload"
 	"github.com/CamberLoid/Chimata/internal/serverlib"
 	"github.com/CamberLoid/Chimata/internal/transaction"
 	"github.com/CamberLoid/Chimata/internal/users"
@@ -54,12 +56,18 @@ func HandlerVersion(w http.ResponseWriter, req *http.Request) {
 func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request) {
 	InfoLogger.Print("New incoming /transaction/create/bySenderPK request")
 	var err error
-	tx := new(transaction.Transaction)
+	//tx := new(transaction.Transaction)
+	txj := new(transaction.TransactionJSON)
 
 	// 解码
-	if err = json.NewDecoder(req.Body).Decode(&tx); err != nil {
+	if err = json.NewDecoder(req.Body).Decode(txj); err != nil {
 		returnFailure(w, req, err, http.StatusBadRequest)
 		return
+	}
+	tx, err := txj.CopyToStruct()
+	if err != nil {
+		returnFailure(w, req,
+			fmt.Errorf("transaction parse failed"+err.Error()), 400)
 	}
 
 	// 验证
@@ -90,12 +98,6 @@ func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request
 
 	serverlib.KeySwitchSenderToReceipt(tx, swk)
 
-	// 写入
-	if err = db.WriteTransaction(Database, tx); err != nil {
-		returnFailure(w, req, err, http.StatusInternalServerError)
-		return
-	}
-
 	// 更新余额
 	senderBalance, err := db.GetUserBalance(Database, tx.Sender)
 	if err != nil {
@@ -121,10 +123,16 @@ func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request
 		returnFailure(w, req, err, 500)
 	}
 
+	serverlib.FinishTransaction(tx)
+	if err = db.WriteTransaction(Database, tx); err != nil {
+		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
+
 	// 处理返回信息
 	respData := make(map[string]interface{})
 	respData["status"] = "OK"
-	respData["transaction"] = *tx
+	respData["transaction"] = tx.CopyToJSONStruct()
 
 	respJSON, err := json.Marshal(respData)
 	if err != nil {
@@ -137,21 +145,23 @@ func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request
 	InfoLogger.Print("Proceeded /transaction/create/bySenderPK request")
 
 	// 更新
-	tx.ConfirmingPhase = "confirmed"
-	if err = db.WriteTransaction(Database, tx); err != nil {
-		returnFailure(w, req, err, http.StatusInternalServerError)
-		return
-	}
+
 }
 
 // Handle /transaction/create/byReceiptPK request
 func HandlerTransactionCreateByReceiptPK(w http.ResponseWriter, req *http.Request) {
 	var err error
-	tx := new(transaction.Transaction)
+	txj := new(transaction.TransactionJSON)
 
-	if err = json.NewDecoder(req.Body).Decode(&tx); err != nil {
+	// 解码
+	if err = json.NewDecoder(req.Body).Decode(txj); err != nil {
 		returnFailure(w, req, err, http.StatusBadRequest)
 		return
+	}
+	tx, err := txj.CopyToStruct()
+	if err != nil {
+		returnFailure(w, req,
+			fmt.Errorf("transaction parse failed"+err.Error()), 400)
 	}
 
 	// 处理交易信息
@@ -278,7 +288,7 @@ func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 	// 处理返回信息
 	respData := make(map[string]interface{})
 	respData["status"] = "OK"
-	respData["transaction"] = *tx
+	respData["transaction"] = tx.CopyToJSONStruct()
 
 	respJSON, err := json.Marshal(respData)
 	if err != nil {
@@ -331,25 +341,12 @@ func HandlerTransactionGet(w http.ResponseWriter, req *http.Request) {
 
 // --- 注册部分 ---
 
-type UserRegisterReq struct {
-	UUID         uuid.UUID `json:"uuid"`
-	Name         string    `json:"name"`
-	CKKS_pubkey  []byte    `json:"ckks_pubkey"`
-	ECDSA_pubkey []byte    `json:"ecdsa_pubkey"`
-}
-
-type RegisterSwkReq struct {
-	UserIn  uuid.UUID `json:"userIn"`
-	UserOut uuid.UUID `json:"userOut"`
-	Swk     []byte    `json:"swk"`
-}
-
 // Handle /register/swk
 func HandlerRegisterSwk(w http.ResponseWriter, req *http.Request) {
 	InfoLogger.Print("Received new /register/swk")
 	var err error
 
-	request := new(RegisterSwkReq)
+	request := new(restfulpayload.RegisterSwkReq)
 	err = json.NewDecoder(req.Body).Decode(request)
 	if err != nil {
 		returnFailure(w, req, err, 400)
@@ -358,7 +355,12 @@ func HandlerRegisterSwk(w http.ResponseWriter, req *http.Request) {
 
 	id := uuid.New()
 
-	ckksSwkBytes := request.Swk
+	ckksSwkBytes, err := base64.RawStdEncoding.DecodeString(request.Swk)
+	if err != nil {
+		returnFailure(w, req,
+			fmt.Errorf("ckks swk parse failed"+err.Error()), 400)
+		return
+	}
 	ckksSwk := new(rlwe.SwitchingKey)
 	err = ckksSwk.UnmarshalBinary(ckksSwkBytes)
 	if err != nil {
@@ -395,7 +397,7 @@ func HandlerRegisterUser(w http.ResponseWriter, req *http.Request) {
 	InfoLogger.Print("Received new /register/user")
 	var err error
 
-	request := new(UserRegisterReq)
+	request := new(restfulpayload.UserRegisterReq)
 	err = json.NewDecoder(req.Body).Decode(request)
 	if err != nil {
 		returnFailure(w, req, err, 400)
@@ -406,7 +408,11 @@ func HandlerRegisterUser(w http.ResponseWriter, req *http.Request) {
 	userUUID := request.UUID
 
 	// Parse CKKS and ECDSA Public Key
-	ckksPubkeyBytes := request.CKKS_pubkey
+	ckksPubkeyBytes, err := base64.RawStdEncoding.DecodeString(request.CKKS_pubkey)
+	if err != nil {
+		returnFailure(w, req, err, 400)
+		return
+	}
 	if len(ckksPubkeyBytes) == 0 {
 		returnFailure(w, req,
 			fmt.Errorf("ckks pubkey parse failed"), 400)
@@ -419,7 +425,11 @@ func HandlerRegisterUser(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	ecdsaPubkeyBytes := request.ECDSA_pubkey
+	ecdsaPubkeyBytes, err := base64.RawStdEncoding.DecodeString(request.ECDSA_pubkey)
+	if err != nil {
+		returnFailure(w, req, err, 400)
+		return
+	}
 	if len(ecdsaPubkeyBytes) == 0 {
 		returnFailure(w, req,
 			fmt.Errorf("ecdsa pubkey parse failed: "+err.Error()), 400)
@@ -488,4 +498,47 @@ func HandlerRegisterUser(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(200)
 	w.Write(respJSON)
 	InfoLogger.Print("Processed new /register/user, uuid = " + userUUID.String())
+}
+
+func HandlerUserGetBalance(w http.ResponseWriter, req *http.Request) {
+	InfoLogger.Print("Received new /user/getBalance request")
+	var err error
+
+	// 复用注册时使用的结构体
+	request := new(restfulpayload.UserRegisterReq)
+	err = json.NewDecoder(req.Body).Decode(request)
+	if err != nil {
+		returnFailure(w, req, err, 400)
+		return
+	}
+
+	userUUID := request.UUID
+
+	// 从数据库中读取
+	balance, err := db.GetUserBalance(Database, userUUID)
+	if err != nil {
+		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
+	balanceBytes, err := balance.MarshalBinary()
+	if err != nil {
+		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
+
+	balanceString := base64.StdEncoding.EncodeToString(balanceBytes)
+
+	respData := make(map[string]interface{})
+	respData["status"] = "OK"
+	respData["balance"] = balanceString
+
+	respJSON, err := json.Marshal(respData)
+	if err != nil {
+		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Write(respJSON)
+	InfoLogger.Print("Processed new /user/getBalance, uuid = " + userUUID.String())
 }

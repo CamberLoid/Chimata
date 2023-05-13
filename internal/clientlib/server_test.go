@@ -100,3 +100,35 @@ func TestRegisterSwk(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func BenchmarkRegisterSwk(b *testing.B) {
+	if !checkServerAvailabilities() {
+		b.Skip()
+	}
+	for i := 0; i < b.N; i++ {
+		if err := testRegisterSwk(); err != nil {
+			b.Error(err)
+		}
+	}
+}
+
+func BenchmarkRegisterUser(b *testing.B) {
+	if !checkServerAvailabilities() {
+		b.Skip()
+	}
+	for i := 0; i < b.N; i++ {
+		if err := testRegisterUser(); err != nil {
+			b.Error(err)
+		}
+	}
+}
+func BenchmarkCreateTransferJobBySenderPK(b *testing.B) {
+	if !checkServerAvailabilities() {
+		b.Skip()
+	}
+	for i := 0; i < b.N; i++ {
+		if err := testCreateTransferJobBySenderPK(); err != nil {
+			b.Error(err)
+		}
+	}
+}

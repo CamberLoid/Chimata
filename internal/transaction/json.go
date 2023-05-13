@@ -27,7 +27,7 @@ type TransactionJSON struct {
 	IsValid           bool      `json:"isValid"`
 }
 
-func (t Transaction) CopyToJSONStruct() (res *TransactionJSON, err error) {
+func (t Transaction) CopyToJSONStruct() (res *TransactionJSON) {
 	res = new(TransactionJSON)
 	// Copy all non-[]byte fields
 	res.ConfirmingPhase = t.ConfirmingPhase
