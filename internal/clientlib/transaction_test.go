@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/CamberLoid/Chimata/internal/clientlib"
+	"github.com/CamberLoid/Chimata/internal/misc"
 	"github.com/CamberLoid/Chimata/internal/transaction"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
@@ -119,7 +120,7 @@ func testTransferByReceiptPK() (err error) {
 
 func genUnconfirmedTransaction(amount float64) (tx *transaction.Transaction) {
 	//amount := clientlib.GenRandFloat()
-	params := clientlib.GetCKKSParams()
+	params := misc.GetCKKSParams()
 	keyGen := ckks.NewKeyGenerator(params)
 	evl := ckks.NewEvaluator(params, rlwe.EvaluationKey{})
 

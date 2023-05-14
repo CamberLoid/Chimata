@@ -121,7 +121,7 @@ func (u User) AcceptTransactionByTransaction(t *transaction.Transaction) (sig []
 	}
 
 	// 生成签名
-	sig, err = signByte([]byte("ACCEPT"+string(t.CTSender)), u.UserECDSAKeyChain[0].ECDSAPrivateKey)
+	sig, err = signByte((t.CTSender), u.UserECDSAKeyChain[0].ECDSAPrivateKey)
 	if err != nil {
 		return nil, err
 	}

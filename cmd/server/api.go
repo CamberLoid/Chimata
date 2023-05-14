@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/CamberLoid/Chimata/internal/db"
 	"github.com/CamberLoid/Chimata/internal/key"
+	"github.com/CamberLoid/Chimata/internal/misc"
 	"github.com/CamberLoid/Chimata/internal/restfulpayload"
 	"github.com/CamberLoid/Chimata/internal/serverlib"
 	"github.com/CamberLoid/Chimata/internal/transaction"
@@ -54,6 +56,7 @@ func HandlerVersion(w http.ResponseWriter, req *http.Request) {
 
 // Handle /transaction/create/bySenderPK request
 func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
 	InfoLogger.Print("New incoming /transaction/create/bySenderPK request")
 	var err error
 	//tx := new(transaction.Transaction)
@@ -143,13 +146,13 @@ func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request
 	w.WriteHeader(200)
 	w.Write(respJSON)
 	InfoLogger.Print("Proceeded /transaction/create/bySenderPK request")
-
-	// 更新
-
+	InfoLogger.Print("TransactionCreateBySenderPK took " + time.Since(start).String())
 }
 
 // Handle /transaction/create/byReceiptPK request
 func HandlerTransactionCreateByReceiptPK(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	InfoLogger.Print("New incoming /transaction/create/byReceiptPK request")
 	var err error
 	txj := new(transaction.TransactionJSON)
 
@@ -168,12 +171,15 @@ func HandlerTransactionCreateByReceiptPK(w http.ResponseWriter, req *http.Reques
 	// 验证
 	valid, err := VerifyTransaction(tx)
 	if err != nil {
-		returnFailure(w, req, err, http.StatusInternalServerError)
+		returnFailure(w, req,
+			fmt.Errorf("internal verification failed: "+err.Error()),
+			http.StatusInternalServerError)
 		return
 	}
 	if !valid {
 		returnFailure(w, req,
-			fmt.Errorf("verification failed"+err.Error()), http.StatusUnauthorized)
+			fmt.Errorf("cannot verify: "+err.Error()), http.StatusUnauthorized)
+		return
 	}
 
 	serverlib.InitializeNewReceiptPKTransaction(tx)
@@ -181,7 +187,10 @@ func HandlerTransactionCreateByReceiptPK(w http.ResponseWriter, req *http.Reques
 	// 重加密
 	swk, err := db.GetSwitchingKeyUserIDInOut(Database, tx.Receipt, tx.Sender)
 	if err != nil {
-		returnFailure(w, req, err, http.StatusInternalServerError)
+		returnFailure(w, req,
+			fmt.Errorf("get re-encryption key failed: "+err.Error()),
+			http.StatusInternalServerError)
+		return
 	}
 
 	err = serverlib.KeySwitchReceiptToSender(tx, swk)
@@ -192,7 +201,9 @@ func HandlerTransactionCreateByReceiptPK(w http.ResponseWriter, req *http.Reques
 
 	// 写入数据库
 	if err = db.WriteTransaction(Database, tx); err != nil {
-		returnFailure(w, req, err, http.StatusInternalServerError)
+		returnFailure(w, req,
+			fmt.Errorf("database write failed: "+err.Error()),
+			http.StatusInternalServerError)
 	}
 
 	// 处理返回信息
@@ -202,43 +213,49 @@ func HandlerTransactionCreateByReceiptPK(w http.ResponseWriter, req *http.Reques
 
 	respJSON, err := json.Marshal(respData)
 	if err != nil {
-		returnFailure(w, req, err, http.StatusInternalServerError)
+		returnFailure(w, req,
+			fmt.Errorf("json marshal failed"+err.Error()),
+			http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(200)
 	w.Write(respJSON)
+	InfoLogger.Print("Proceeded /transaction/create/byReceiptPK request")
+	InfoLogger.Print("TransactionCreateByReceiptPK took " + time.Since(start).String())
 }
 
 // Handle /transaction/confirm request
-// 这个方法只预期两个输入，及uuid和签名
 func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 	var err error
 
-	jsonData := make(map[string]interface{})
-	err = json.NewDecoder(req.Body).Decode(&jsonData)
-	if err != nil {
-		returnFailure(w, req, err, 400)
+	InfoLogger.Print("New incoming /transaction/confirm request")
+	start := time.Now()
+
+	txj := new(transaction.TransactionJSON)
+
+	// 解码
+	if err = json.NewDecoder(req.Body).Decode(txj); err != nil {
+		returnFailure(w, req, err, http.StatusBadRequest)
 		return
 	}
-
-	txUUID, err := uuid.Parse(jsonData["uuid"].(string))
+	_tx, err := txj.CopyToStruct()
 	if err != nil {
 		returnFailure(w, req,
-			fmt.Errorf("uuid parse failed: "+err.Error()), 400)
+			fmt.Errorf("transaction parse failed"+err.Error()), 400)
 	}
 
 	// 获取已有的交易信息
-	tx, err := db.GetTransaction(Database, txUUID)
+	tx, err := db.GetTransaction(Database, txj.UUID)
 	if err != nil {
 		returnFailure(w, req,
 			fmt.Errorf("get transaction failed: "+err.Error()), 500)
+		return
 	}
 
 	// 验证交易
-	sig := []byte(jsonData["sigCtSender"].(string))
-	tx.SigCTSender = sig
-	tx.CTSenderSignedBy = tx.Receipt
+	tx.SigCTSender = _tx.SigCTSender
+	tx.CTSenderSignedBy = _tx.Receipt
 
 	valid, err := verifyTransactionConfirmingStage(tx)
 	if err != nil {
@@ -248,12 +265,14 @@ func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 	if !valid {
 		returnFailure(w, req,
 			fmt.Errorf("verification failed"+err.Error()), http.StatusUnauthorized)
+		return
 	}
 
 	// 更新交易信息
 	err = serverlib.FinishTransaction(tx)
 	if err != nil {
 		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
 	}
 
 	// 更新余额
@@ -265,24 +284,29 @@ func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 	receiptBalance, err := db.GetUserBalance(Database, tx.Receipt)
 	if err != nil {
 		returnFailure(w, req, err, 500)
+		return
 	}
 	senderUpdated, receiptUpdated, err := serverlib.GetUpdatedBalance(tx, senderBalance, receiptBalance)
 	if err != nil {
 		returnFailure(w, req, err, 500)
+		return
 	}
 
 	err = db.UpdateBalance(Database, tx.Sender, senderUpdated)
 	if err != nil {
 		returnFailure(w, req, err, 500)
+		return
 	}
 	err = db.UpdateBalance(Database, tx.Receipt, receiptUpdated)
 	if err != nil {
 		returnFailure(w, req, err, 500)
+		return
 	}
 
 	// 写入交易
 	if err = db.WriteTransaction(Database, tx); err != nil {
 		returnFailure(w, req, err, http.StatusInternalServerError)
+		return
 	}
 
 	// 处理返回信息
@@ -298,6 +322,8 @@ func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 
 	w.WriteHeader(200)
 	w.Write(respJSON)
+	InfoLogger.Print("Proceeded /transaction/confirm request")
+	InfoLogger.Print("TransactionConfirm took " + time.Since(start).String())
 }
 
 // Handle /transaction/reject request
@@ -343,6 +369,7 @@ func HandlerTransactionGet(w http.ResponseWriter, req *http.Request) {
 
 // Handle /register/swk
 func HandlerRegisterSwk(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
 	InfoLogger.Print("Received new /register/swk")
 	var err error
 
@@ -368,7 +395,7 @@ func HandlerRegisterSwk(w http.ResponseWriter, req *http.Request) {
 			fmt.Errorf("ckks swk parse failed"+err.Error()), 400)
 		return
 	}
-	DebugLogger.Print("Got swk, size = " + fmt.Sprint(ckksSwk.MarshalBinarySize()))
+	DebugLogger.Print("Got swk, size = " + fmt.Sprint(ckksSwk.MarshalBinarySize()) + "From " + request.UserIn.String() + " To " + request.UserOut.String())
 
 	err = db.PutSwitchingKeyColumnByUserInUserOut(Database, id,
 		request.UserIn, request.UserOut, ckksSwk)
@@ -389,15 +416,16 @@ func HandlerRegisterSwk(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(200)
 	w.Write(respJSON)
 	InfoLogger.Print("Processed new /register/swk")
-
+	InfoLogger.Print("HandlerRegisterSwk took " + time.Since(start).String())
 }
 
 // Handle /register/User
 func HandlerRegisterUser(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
 	InfoLogger.Print("Received new /register/user")
 	var err error
 
-	request := new(restfulpayload.UserRegisterReq)
+	request := new(restfulpayload.RegisterUserReq)
 	err = json.NewDecoder(req.Body).Decode(request)
 	if err != nil {
 		returnFailure(w, req, err, 400)
@@ -418,7 +446,7 @@ func HandlerRegisterUser(w http.ResponseWriter, req *http.Request) {
 			fmt.Errorf("ckks pubkey parse failed"), 400)
 		return
 	}
-	ckksPubkey := rlwe.NewPublicKey(GetCKKSParams().Parameters)
+	ckksPubkey := rlwe.NewPublicKey(misc.GetCKKSParams().Parameters)
 	if err = ckksPubkey.UnmarshalBinary(ckksPubkeyBytes); err != nil {
 		returnFailure(w, req,
 			fmt.Errorf("ckks pubkey parse failed: "+err.Error()), 400)
@@ -458,7 +486,7 @@ func HandlerRegisterUser(w http.ResponseWriter, req *http.Request) {
 		ECDSAPublicKey:  ecdsaPubkey,
 		ECDSAPrivateKey: nil,
 	})
-	params := GetCKKSParams()
+	params := misc.GetCKKSParams()
 	balance := ckks.NewEncryptor(params, ckksPubkey).EncryptNew(
 		ckks.NewEncoder(params).EncodeNew(
 			[]float64{0}, params.MaxLevel(), params.DefaultScale(), params.MaxLogSlots(),
@@ -498,6 +526,7 @@ func HandlerRegisterUser(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(200)
 	w.Write(respJSON)
 	InfoLogger.Print("Processed new /register/user, uuid = " + userUUID.String())
+	InfoLogger.Print("HandlerRegisterUser took " + time.Since(start).String())
 }
 
 func HandlerUserGetBalance(w http.ResponseWriter, req *http.Request) {
@@ -505,7 +534,7 @@ func HandlerUserGetBalance(w http.ResponseWriter, req *http.Request) {
 	var err error
 
 	// 复用注册时使用的结构体
-	request := new(restfulpayload.UserRegisterReq)
+	request := new(restfulpayload.RegisterUserReq)
 	err = json.NewDecoder(req.Body).Decode(request)
 	if err != nil {
 		returnFailure(w, req, err, 400)

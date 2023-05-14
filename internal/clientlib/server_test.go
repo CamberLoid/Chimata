@@ -1,11 +1,15 @@
 package clientlib_test
 
 import (
+	"fmt"
+	"math"
 	"net/http"
 	"testing"
 
 	"github.com/CamberLoid/Chimata/internal/clientlib"
+	"github.com/CamberLoid/Chimata/internal/misc"
 	"github.com/tuneinsight/lattigo/v4/ckks"
+	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
 func checkServerAvailabilities() bool {
@@ -18,10 +22,6 @@ func checkServerAvailabilities() bool {
 
 func testCreateTransferJobBySenderPK() error {
 	var err error
-	initTestRandomUser()
-	if err = testRegisterSwk(); err != nil {
-		return err
-	}
 
 	tx, err := userSender.TransferBySenderPK(&userReceipt, clientlib.GenRandFloat())
 	if err != nil {
@@ -34,11 +34,70 @@ func testCreateTransferJobBySenderPK() error {
 	return nil
 }
 
-func TestCreateTransferJob(t *testing.T) {
+func testCreateTransferJobByReceiptPK() error {
+	var err error
+	var randAmount = clientlib.GenRandFloat()
+
+	tx, err := userSender.TransferByReceiptPK(&userReceipt, randAmount)
+	if err != nil {
+		return err
+	}
+
+	txNew, err := userSender.CreateTransferJob(tx)
+	if err != nil {
+		return err
+	}
+
+	// Check if amount is correct
+	ctSender := new(rlwe.Ciphertext)
+	err = ctSender.UnmarshalBinary(txNew.CTSender)
+	if err != nil {
+		return err
+	}
+	if newAmount, err := userSender.DecryptAmountFromCT(ctSender); err != nil {
+		return err
+	} else if math.Abs(newAmount-randAmount) > 0.01 {
+		return fmt.Errorf("decrypted amount fail to verify")
+	}
+
+	// Accept transaction
+	_, err = userReceipt.AcceptTransactionByTransaction(txNew)
+	if err != nil {
+		return err
+	}
+	err = userReceipt.CreateConfirmTransactionTask(txNew)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func TestCreateTransferJobBySenderPK(t *testing.T) {
 	if !checkServerAvailabilities() {
 		t.Skip("server is not available")
 	}
-	err := testCreateTransferJobBySenderPK()
+	initTestRandomUser()
+	var err error
+	if err = testRegisterSwk(); err != nil {
+		t.Error(err)
+	}
+	err = testCreateTransferJobBySenderPK()
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestCreateTransferJobByReceiptPK(t *testing.T) {
+	if !checkServerAvailabilities() {
+		t.Skip("server is not available")
+	}
+	var err error
+	initTestRandomUser()
+	if err = testRegisterSwk(); err != nil {
+		t.Error(err)
+	}
+	err = testCreateTransferJobByReceiptPK()
 	if err != nil {
 		t.Error(err)
 	}
@@ -72,7 +131,7 @@ func testRegisterSwk() error {
 		return err
 	}
 
-	params := clientlib.GetCKKSParams()
+	params := misc.GetCKKSParams()
 	keygen := ckks.NewKeyGenerator(params)
 	swk1 := keygen.GenSwitchingKey(userSender.UserCKKSKeyChain[0].CKKSPrivateKey,
 		userReceipt.UserCKKSKeyChain[0].CKKSPrivateKey)
@@ -85,8 +144,8 @@ func testRegisterSwk() error {
 
 	swk2 := keygen.GenSwitchingKey(userReceipt.UserCKKSKeyChain[0].CKKSPrivateKey,
 		userSender.UserCKKSKeyChain[0].CKKSPrivateKey)
-	err = clientlib.RegisterSwk(userSender.UserIdentifier,
-		userReceipt.UserIdentifier,
+	err = clientlib.RegisterSwk(userReceipt.UserIdentifier,
+		userSender.UserIdentifier,
 		swk2)
 	return err
 }
@@ -126,8 +185,31 @@ func BenchmarkCreateTransferJobBySenderPK(b *testing.B) {
 	if !checkServerAvailabilities() {
 		b.Skip()
 	}
+	initTestRandomUser()
+	var err error
+	if err = testRegisterSwk(); err != nil {
+		b.Error(err)
+	}
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := testCreateTransferJobBySenderPK(); err != nil {
+		if err = testCreateTransferJobBySenderPK(); err != nil {
+			b.Error(err)
+		}
+	}
+}
+
+func BenchmarkCreateTransferJobByReceiptPK(b *testing.B) {
+	if !checkServerAvailabilities() {
+		b.Skip()
+	}
+	initTestRandomUser()
+	var err error
+	if err = testRegisterSwk(); err != nil {
+		b.Error(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err = testCreateTransferJobByReceiptPK(); err != nil {
 			b.Error(err)
 		}
 	}

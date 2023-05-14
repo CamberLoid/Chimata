@@ -30,9 +30,9 @@ func VerifyTransaction(tx *transaction.Transaction) (res bool, err error) {
 	switch {
 	case tx.CTSenderSignedBy == tx.Sender:
 		res, err = verifyTransactionSenderPK(tx)
-	case tx.CTReceiptSignedBy == tx.Sender && tx.SigCTSender == nil:
+	case tx.CTReceiptSignedBy == tx.Sender && len(tx.SigCTSender) == 0:
 		res, err = verifyTransactionReceiptPK(tx)
-	case tx.SigCTReceipt != nil && tx.SigCTSender != nil:
+	case len(tx.SigCTReceipt) != 0 && len(tx.SigCTSender) != 0:
 		res, err = verifyTransactionConfirmingStage(tx)
 	default:
 		return false, fmt.Errorf("verification failed: signature, unknown reason")
@@ -49,6 +49,7 @@ func VerifyTransaction(tx *transaction.Transaction) (res bool, err error) {
 
 // 验证
 func verifyTransactionConfirmingStage(tx *transaction.Transaction) (res bool, err error) {
+	DebugLogger.Print("Going in verifyTransactionConfirmingStage")
 	SignerUUID := tx.CTSenderSignedBy
 
 	// 获取公钥
@@ -96,13 +97,13 @@ func verifyTransactionReceiptPK(tx *transaction.Transaction) (res bool, err erro
 
 	pubkey, err := db.GetECDSAKeyByUserUUID(Database, SignerUUID)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("internal database error: %v", err)
 	}
 
-	res, err = serverlib.ValidateSignatureForCipherText(tx.CTSender, tx.SigCTSender, pubkey.ECDSAPublicKey)
+	res, err = serverlib.ValidateSignatureForCipherText(tx.CTReceipt, tx.SigCTReceipt, pubkey.ECDSAPublicKey)
 
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("internal verify error: %v", err)
 	}
 	if !res {
 		return false, fmt.Errorf("signature verify failed")

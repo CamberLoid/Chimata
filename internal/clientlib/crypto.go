@@ -8,6 +8,7 @@ package clientlib
 import (
 	"crypto/elliptic"
 
+	"github.com/CamberLoid/Chimata/internal/misc"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
@@ -56,7 +57,7 @@ func CKKSEncryptAmount(amount float64, pk *rlwe.PublicKey) *rlwe.Ciphertext {
 // 输入：密文（ct），私钥
 // 输出：金额（float64）
 func CKKSDecryptAmountFromCT(ct *rlwe.Ciphertext, sk *rlwe.SecretKey) float64 {
-	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
+	params := misc.GetCKKSParams()
 	encoder := ckks.NewEncoder(params)
 	decryptor := ckks.NewDecryptor(params, sk)
 

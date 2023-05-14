@@ -44,7 +44,7 @@ type GetBalanceJSON struct {
 // --- 注册部分 ---
 
 func (u *User) RegisterUser() error {
-	request := new(restfulpayload.UserRegisterReq)
+	request := new(restfulpayload.RegisterUserReq)
 	var err error
 	if len(u.UserIdentifier) == 0 {
 		u.UserIdentifier = uuid.New()

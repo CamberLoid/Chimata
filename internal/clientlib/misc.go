@@ -5,8 +5,6 @@ import (
 	"math/big"
 	"reflect"
 	"strconv"
-
-	"github.com/tuneinsight/lattigo/v4/ckks"
 )
 
 func getType(myvar interface{}) string {
@@ -23,9 +21,4 @@ func GenRandFloat() float64 {
 	randFloat := float64(randInt.Int64()) / 100.0
 
 	return randFloat
-}
-
-func GetCKKSParams() ckks.Parameters {
-	p, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
-	return p
 }

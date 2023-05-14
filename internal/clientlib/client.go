@@ -103,6 +103,6 @@ func (c Client) getTransactionAmount(t *transaction.Transaction) (amount float64
 		}
 		return c.MainUser.DecryptAmountFromCT(ct)
 	} else {
-		return 0, errors.New("not user's ciphertext!")
+		return 0, errors.New("not user's ciphertext")
 	}
 }

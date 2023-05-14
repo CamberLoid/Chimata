@@ -4,7 +4,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 
 	"github.com/CamberLoid/Chimata/internal/key"
@@ -20,8 +19,8 @@ import (
 func GetTransaction(db *sql.DB, txUUID uuid.UUID) (tx *transaction.Transaction, err error) {
 	stmt, err := db.Prepare(`
 	SELECT confirming_phase, uuid, sender, receipt,
-		ctSender, ctReceipt, sigCtSender, ctSenderSignedBy,
-		sigCTReceipt, ctReceiptSignedBy, timeStamp, isValid
+		ct_sender, ct_receipt, sig_ct_sender, ct_sender_signed_by,
+		sig_ct_receipt, ct_receipt_signed_by, timestamp, is_valid
 	FROM Transactions
 	WHERE uuid = ?
 `)
@@ -34,7 +33,6 @@ func GetTransaction(db *sql.DB, txUUID uuid.UUID) (tx *transaction.Transaction, 
 	row := stmt.QueryRow(txUUID.String())
 
 	// 将查询结果映射到结构体
-	var txJSON string
 	tx = &transaction.Transaction{}
 	err = row.Scan(
 		&tx.ConfirmingPhase,
@@ -52,12 +50,6 @@ func GetTransaction(db *sql.DB, txUUID uuid.UUID) (tx *transaction.Transaction, 
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "scan row")
-	}
-
-	// 反序列化 JSON 字符串到 tx 对象
-	err = json.Unmarshal([]byte(txJSON), tx)
-	if err != nil {
-		return nil, errors.Wrap(err, "unmarshal json")
 	}
 
 	return tx, nil
@@ -180,7 +172,10 @@ func GetSwitchingKeyPKInPKOut(db *sql.DB, pkIDIn, pkIDOut uuid.UUID) (swk *rlwe.
 	`, pkIDIn, pkIDOut)
 
 	var swkByte []byte
-	if row.Scan(&swkByte) != nil {
+	if err = row.Scan(&swkByte); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, err
+		}
 		return nil, fmt.Errorf("failed to scan switching key: %v", err)
 	}
 	err = swk.UnmarshalBinary(swkByte)

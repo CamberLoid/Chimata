@@ -61,7 +61,7 @@ func ValidateSignatureForCipherText(ct interface{}, sig []byte, pk *ecdsa.Public
 // 输入公钥和密文和签名
 // 输出验证结果
 func ValidateSignatureForAcceptCipherText(ct interface{}, sig []byte, pk *ecdsa.PublicKey) (isValid bool, err error) {
-	var _ct *rlwe.Ciphertext
+	var _ct *rlwe.Ciphertext = new(rlwe.Ciphertext)
 	var msg []byte
 	switch v := ct.(type) {
 	case *rlwe.Ciphertext:
@@ -79,8 +79,6 @@ func ValidateSignatureForAcceptCipherText(ct interface{}, sig []byte, pk *ecdsa.
 	default:
 		return false, fmt.Errorf("invalid type of _ct, accept *rlwe.Ciphertext or []byte, received " + reflect.TypeOf(ct).String())
 	}
-
-	msg = []byte("ACCEPT" + string(msg))
 
 	return ValidateSignatureBase(msg, sig, pk), nil
 }

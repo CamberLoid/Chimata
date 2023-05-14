@@ -7,30 +7,33 @@ import (
 
 	"github.com/CamberLoid/Chimata/internal/clientlib"
 	"github.com/tuneinsight/lattigo/v4/ckks"
+	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
 
 func TestCKKSEncryptAndDecrypt(t *testing.T) {
-	if res, err := testCKKSEncryptAndDecrypt(); !res {
+	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
+	keyGen := ckks.NewKeyGenerator(params)
+	sk, pk := keyGen.GenKeyPair()
+	if res, err := testCKKSEncryptAndDecrypt(sk, pk); !res {
 		t.Error(err)
 	}
 }
 
 func BenchmarkCKKSEncryptAndDecrypt(b *testing.B) {
+	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
+	keyGen := ckks.NewKeyGenerator(params)
+	sk, pk := keyGen.GenKeyPair()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if res, err := testCKKSEncryptAndDecrypt(); !res {
+		if res, err := testCKKSEncryptAndDecrypt(sk, pk); !res {
 			b.Error(err)
-		} else {
-			b.Log(err)
 		}
 	}
 }
 
-func testCKKSEncryptAndDecrypt() (bool, error) {
+func testCKKSEncryptAndDecrypt(sk *rlwe.SecretKey, pk *rlwe.PublicKey) (bool, error) {
 	// 创建一个随机浮点数
 	randFloat := clientlib.GenRandFloat()
-	params, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
-	keyGen := ckks.NewKeyGenerator(params)
-	sk, pk := keyGen.GenKeyPair()
 
 	ct := clientlib.CKKSEncryptAmount(randFloat, pk)
 	decrypted := clientlib.CKKSDecryptAmountFromCT(ct, sk)

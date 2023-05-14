@@ -18,3 +18,8 @@ func NewCiphertext() *rlwe.Ciphertext {
 	ct := ckks.NewCiphertext(params, 1, params.MaxLevel())
 	return ct
 }
+
+func GetCKKSParams() ckks.Parameters {
+	p, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
+	return p
+}
