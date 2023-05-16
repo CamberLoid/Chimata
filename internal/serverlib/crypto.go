@@ -134,7 +134,7 @@ func GetUpdatedReceiptBalance(tx *transaction.Transaction, balance *rlwe.Ciphert
 	if err != nil {
 		return nil, err
 	}
-	return getUpdatedSenderBalance(balance, ct)
+	return getUpdatedReceiptBalance(balance, ct)
 }
 
 func getUpdatedReceiptBalance(balance, txAmount *rlwe.Ciphertext) (updated *rlwe.Ciphertext, err error) {
