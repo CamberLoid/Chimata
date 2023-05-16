@@ -1,6 +1,9 @@
 package misc
 
 import (
+	"crypto/rand"
+	"math/big"
+
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
@@ -22,4 +25,11 @@ func NewCiphertext() *rlwe.Ciphertext {
 func GetCKKSParams() ckks.Parameters {
 	p, _ := ckks.NewParametersFromLiteral(ckks.PN12QP109)
 	return p
+}
+
+func GenRandFloat() float64 {
+	randInt, _ := rand.Int(rand.Reader, big.NewInt(1000000))
+	randFloat := float64(randInt.Int64()) / 100.0
+
+	return randFloat
 }

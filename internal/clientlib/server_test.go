@@ -23,7 +23,7 @@ func checkServerAvailabilities() bool {
 func testCreateTransferJobBySenderPK() error {
 	var err error
 
-	tx, err := userSender.TransferBySenderPK(&userReceipt, clientlib.GenRandFloat())
+	tx, err := userSender.TransferBySenderPK(&userReceipt, misc.GenRandFloat())
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func testCreateTransferJobBySenderPK() error {
 
 func testCreateTransferJobByReceiptPK() error {
 	var err error
-	var randAmount = clientlib.GenRandFloat()
+	var randAmount = misc.GenRandFloat()
 
 	tx, err := userSender.TransferByReceiptPK(&userReceipt, randAmount)
 	if err != nil {

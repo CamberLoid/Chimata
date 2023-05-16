@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/CamberLoid/Chimata/internal/clientlib"
+	"github.com/CamberLoid/Chimata/internal/misc"
 	"github.com/tuneinsight/lattigo/v4/ckks"
 	"github.com/tuneinsight/lattigo/v4/rlwe"
 )
@@ -33,7 +34,7 @@ func BenchmarkCKKSEncryptAndDecrypt(b *testing.B) {
 
 func testCKKSEncryptAndDecrypt(sk *rlwe.SecretKey, pk *rlwe.PublicKey) (bool, error) {
 	// 创建一个随机浮点数
-	randFloat := clientlib.GenRandFloat()
+	randFloat := misc.GenRandFloat()
 
 	ct := clientlib.CKKSEncryptAmount(randFloat, pk)
 	decrypted := clientlib.CKKSDecryptAmountFromCT(ct, sk)

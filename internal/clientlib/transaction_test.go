@@ -5,7 +5,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/CamberLoid/Chimata/internal/clientlib"
 	"github.com/CamberLoid/Chimata/internal/misc"
 	"github.com/CamberLoid/Chimata/internal/transaction"
 	"github.com/tuneinsight/lattigo/v4/ckks"
@@ -33,7 +32,7 @@ func BenchmarkTransferBySenderPK(b *testing.B) {
 
 func testTransferBySenderPK() error {
 	initTestRandomUser()
-	randFloat := clientlib.GenRandFloat()
+	randFloat := misc.GenRandFloat()
 
 	t, err := userSender.TransferBySenderPK(&userReceipt, randFloat)
 	if err != nil {
@@ -90,7 +89,7 @@ func BenchmarkTransferByReceiptPK(b *testing.B) {
 
 func testTransferByReceiptPK() (err error) {
 	initTestRandomUser()
-	randFloat := clientlib.GenRandFloat()
+	randFloat := misc.GenRandFloat()
 
 	t, err := userSender.TransferByReceiptPK(&userReceipt, randFloat)
 	if err != nil {
@@ -119,7 +118,7 @@ func testTransferByReceiptPK() (err error) {
 // --- ACCEPT ---
 
 func genUnconfirmedTransaction(amount float64) (tx *transaction.Transaction) {
-	//amount := clientlib.GenRandFloat()
+	//amount := misc.GenRandFloat()
 	params := misc.GetCKKSParams()
 	keyGen := ckks.NewKeyGenerator(params)
 	evl := ckks.NewEvaluator(params, rlwe.EvaluationKey{})
@@ -139,7 +138,7 @@ func genUnconfirmedTransaction(amount float64) (tx *transaction.Transaction) {
 
 func testAcceptTransactionByTransaction() (err error) {
 	initTestRandomUser()
-	amount := clientlib.GenRandFloat()
+	amount := misc.GenRandFloat()
 	t := genUnconfirmedTransaction(amount)
 
 	// 检查收款方和付款方的信息
