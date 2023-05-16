@@ -57,6 +57,7 @@ func HandlerVersion(w http.ResponseWriter, req *http.Request) {
 // Handle /transaction/create/bySenderPK request
 func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
+	var _start time.Time
 	InfoLogger.Print("New incoming /transaction/create/bySenderPK request")
 	var err error
 	//tx := new(transaction.Transaction)
@@ -93,43 +94,64 @@ func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request
 	}
 
 	// 重加密
+	_start = time.Now()
 	swk, err := db.GetSwitchingKeyUserIDInOut(Database, tx.Sender, tx.Receipt)
 	if err != nil {
 		returnFailure(w, req, err, http.StatusInternalServerError)
 		return
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
 
 	serverlib.KeySwitchSenderToReceipt(tx, swk)
 
 	// 更新余额
+	_start = time.Now()
 	senderBalance, err := db.GetUserBalance(Database, tx.Sender)
 	if err != nil {
 		returnFailure(w, req, err, 500)
 		return
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
+
+	_start = time.Now()
 	receiptBalance, err := db.GetUserBalance(Database, tx.Receipt)
 	if err != nil {
 		returnFailure(w, req, err, 500)
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
+
 	senderUpdated, receiptUpdated, err := serverlib.GetUpdatedBalance(tx, senderBalance, receiptBalance)
 
 	if err != nil {
 		returnFailure(w, req, err, 500)
 	}
 
+	_start = time.Now()
 	err = db.UpdateBalance(Database, tx.Sender, senderUpdated)
 	if err != nil {
 		returnFailure(w, req, err, 500)
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
+
+	_start = time.Now()
 	err = db.UpdateBalance(Database, tx.Receipt, receiptUpdated)
 	if err != nil {
 		returnFailure(w, req, err, 500)
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
 
 	serverlib.FinishTransaction(tx)
+	_start = time.Now()
 	if err = db.WriteTransaction(Database, tx); err != nil {
 		returnFailure(w, req, err, http.StatusInternalServerError)
 		return
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
 
 	// 处理返回信息
@@ -147,11 +169,13 @@ func HandlerTransactionCreateBySenderPK(w http.ResponseWriter, req *http.Request
 	w.Write(respJSON)
 	InfoLogger.Print("Proceeded /transaction/create/bySenderPK request")
 	InfoLogger.Print("TransactionCreateBySenderPK took " + time.Since(start).String())
+	OperationTxCreateBySender++
 }
 
 // Handle /transaction/create/byReceiptPK request
 func HandlerTransactionCreateByReceiptPK(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
+	var _start time.Time
 	InfoLogger.Print("New incoming /transaction/create/byReceiptPK request")
 	var err error
 	txj := new(transaction.TransactionJSON)
@@ -185,12 +209,15 @@ func HandlerTransactionCreateByReceiptPK(w http.ResponseWriter, req *http.Reques
 	serverlib.InitializeNewReceiptPKTransaction(tx)
 
 	// 重加密
+	_start = time.Now()
 	swk, err := db.GetSwitchingKeyUserIDInOut(Database, tx.Receipt, tx.Sender)
 	if err != nil {
 		returnFailure(w, req,
 			fmt.Errorf("get re-encryption key failed: "+err.Error()),
 			http.StatusInternalServerError)
 		return
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
 
 	err = serverlib.KeySwitchReceiptToSender(tx, swk)
@@ -200,10 +227,13 @@ func HandlerTransactionCreateByReceiptPK(w http.ResponseWriter, req *http.Reques
 	}
 
 	// 写入数据库
+	_start = time.Now()
 	if err = db.WriteTransaction(Database, tx); err != nil {
 		returnFailure(w, req,
 			fmt.Errorf("database write failed: "+err.Error()),
 			http.StatusInternalServerError)
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
 
 	// 处理返回信息
@@ -223,11 +253,13 @@ func HandlerTransactionCreateByReceiptPK(w http.ResponseWriter, req *http.Reques
 	w.Write(respJSON)
 	InfoLogger.Print("Proceeded /transaction/create/byReceiptPK request")
 	InfoLogger.Print("TransactionCreateByReceiptPK took " + time.Since(start).String())
+	OperationTxCreateByReceipt++
 }
 
 // Handle /transaction/confirm request
 func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 	var err error
+	var _start time.Time
 
 	InfoLogger.Print("New incoming /transaction/confirm request")
 	start := time.Now()
@@ -246,11 +278,14 @@ func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// 获取已有的交易信息
+	_start = time.Now()
 	tx, err := db.GetTransaction(Database, txj.UUID)
 	if err != nil {
 		returnFailure(w, req,
 			fmt.Errorf("get transaction failed: "+err.Error()), 500)
 		return
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
 
 	// 验证交易
@@ -276,37 +311,55 @@ func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// 更新余额
+	_start = time.Now()
 	senderBalance, err := db.GetUserBalance(Database, tx.Sender)
 	if err != nil {
 		returnFailure(w, req, err, 500)
 		return
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
+
+	_start = time.Now()
 	receiptBalance, err := db.GetUserBalance(Database, tx.Receipt)
 	if err != nil {
 		returnFailure(w, req, err, 500)
 		return
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
+
 	senderUpdated, receiptUpdated, err := serverlib.GetUpdatedBalance(tx, senderBalance, receiptBalance)
 	if err != nil {
 		returnFailure(w, req, err, 500)
 		return
 	}
 
+	_start = time.Now()
 	err = db.UpdateBalance(Database, tx.Sender, senderUpdated)
 	if err != nil {
 		returnFailure(w, req, err, 500)
 		return
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
+
+	_start = time.Now()
 	err = db.UpdateBalance(Database, tx.Receipt, receiptUpdated)
 	if err != nil {
 		returnFailure(w, req, err, 500)
 		return
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
 
 	// 写入交易
+	_start = time.Now()
 	if err = db.WriteTransaction(Database, tx); err != nil {
 		returnFailure(w, req, err, http.StatusInternalServerError)
 		return
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
 
 	// 处理返回信息
@@ -324,6 +377,7 @@ func HandlerTransactionConfirm(w http.ResponseWriter, req *http.Request) {
 	w.Write(respJSON)
 	InfoLogger.Print("Proceeded /transaction/confirm request")
 	InfoLogger.Print("TransactionConfirm took " + time.Since(start).String())
+	OperationTxConfirm++
 }
 
 // Handle /transaction/reject request

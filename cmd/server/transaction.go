@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/CamberLoid/Chimata/internal/db"
 	"github.com/CamberLoid/Chimata/internal/serverlib"
@@ -53,9 +54,12 @@ func verifyTransactionConfirmingStage(tx *transaction.Transaction) (res bool, er
 	SignerUUID := tx.CTSenderSignedBy
 
 	// 获取公钥
+	_start := time.Now()
 	pubkey, err := db.GetECDSAKeyByUserUUID(Database, SignerUUID)
 	if err != nil {
 		return false, err
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
 
 	// 验证签名
@@ -74,9 +78,12 @@ func verifyTransactionSenderPK(tx *transaction.Transaction) (res bool, err error
 	DebugLogger.Print("Going in verifyTransactionSenderPK")
 	SignerUUID := tx.CTSenderSignedBy
 
+	_start := time.Now()
 	pubkey, err := db.GetECDSAKeyByUserUUID(Database, SignerUUID)
 	if err != nil {
 		return false, err
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
 
 	res, err = serverlib.ValidateSignatureForCipherText(tx.CTSender, tx.SigCTSender, pubkey.ECDSAPublicKey)
@@ -95,9 +102,12 @@ func verifyTransactionReceiptPK(tx *transaction.Transaction) (res bool, err erro
 	DebugLogger.Print("Going in verifyTransactionReceiptPK")
 	SignerUUID := tx.CTReceiptSignedBy
 
+	_start := time.Now()
 	pubkey, err := db.GetECDSAKeyByUserUUID(Database, SignerUUID)
 	if err != nil {
 		return false, fmt.Errorf("internal database error: %v", err)
+	} else {
+		DurationDatabaseOpr += time.Since(_start)
 	}
 
 	res, err = serverlib.ValidateSignatureForCipherText(tx.CTReceipt, tx.SigCTReceipt, pubkey.ECDSAPublicKey)

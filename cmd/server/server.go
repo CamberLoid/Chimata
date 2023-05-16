@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 var (
@@ -41,6 +43,16 @@ func loggerInit() {
 }
 
 func main() {
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		if (OperationTxCreateByReceipt + OperationTxCreateBySender) != 0 {
+			InfoLogger.Printf("Average database operation took %v ns per transaction.", int64(DurationDatabaseOpr)/(OperationTxCreateByReceipt+OperationTxCreateBySender))
+		}
+		os.Exit(0)
+	}()
+
 	var err error
 	loggerInit()
 
